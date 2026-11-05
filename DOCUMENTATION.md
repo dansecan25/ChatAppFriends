@@ -64,7 +64,7 @@ A request travels `routes → middlewares → controllers → services → model
 | `routes/` | URL definitions, plus which middleware applies to each |
 | `middlewares/` | `auth` (sessions), `originGuard`, `rateLimits`, `errorHandler` |
 | `controllers/` | Validate input with zod, call a service, send the response. `socketController` does this for socket events. |
-| `services/` | Business rules: `access` (who may do what), `auth`, `invite`, `server`, `role`, `channel`, `dm`, `message`, `file`, `voice`, `realtime` (socket rooms) |
+| `services/` | Business rules: `access` (who may do what), `auth`, `invite`, `server`, `role`, `channel`, `dm`, `message`, `file`, `voice`, `realtime` (socket rooms), `presence` (who's online) |
 | `models/` | Database queries, one file per area. `schema.ts` creates tables, and `migrate.ts` upgrades an old database. |
 | `utils/` | Small helpers: `httpError`, `password`, `token`, `fieldCrypto` (encrypted usernames) |
 
@@ -130,12 +130,15 @@ the first text channel. It connects the socket while open.
 | `ChannelSidebar` | Lists channels and DMs, opens them, joins voice, deletes channels, signs out | `POST /api/dms`, `DELETE /api/channels/:id`, `POST /api/auth/logout`, `voice:leave` |
 | `CreateChannelDialog` | Creates a channel, optionally limited to roles | `POST /api/servers/:id/channels` |
 | `VoiceControls` | Shows the voice connection, with mute, deafen and leave | `voice:setState`, `voice:leave` |
+| `MemberList` | Lists who can use the open channel, split into online and offline. Hidden in DMs, and behind a button on small screens. | `GET /api/servers/:id/members`, `presence:changed` |
 | `MessageList`, `MessageItem` | Show messages and load older ones. Old unencrypted messages are marked. | `GET .../messages?before=<id>` |
 | `ImageAttachment` | Downloads and decrypts an image, with a load button over 25 MB | `GET /api/attachments/:id`, or `GET /api/images/:id` for old images |
 | `MessageComposer` | Encrypts and sends text and images | `POST .../messages`, `POST .../uploads`, `PUT /api/uploads/:id/chunks/:index`, `DELETE /api/uploads/:id` |
 | `keySharing` | Shares restricted channel keys with newly allowed members, and replaces them after someone loses access | `GET /api/servers/:id/key-work`, `POST /api/channels/:id/keys`, `POST /api/channels/:id/rotate` |
 | `voiceClient` (via `voiceStore`) | Runs the WebRTC voice session | All other `voice:*` events; see [Voice connection](#voice-connection) |
-| `AppIcon`, `UserAvatar`, `RecoveryKeyDialog` | Display only | None |
+| `ProfileDialog` | Sets the profile picture and this server's nickname | `PUT` and `DELETE /api/users/me/avatar`, `PUT /api/servers/:id/nickname` |
+| `UserAvatar` | Shows a profile picture, or initials without one | `GET /api/avatars/:id` |
+| `AppIcon`, `RecoveryKeyDialog` | Display only | None |
 
 ## REST API
 
@@ -157,7 +160,7 @@ The base URL is `<host>:8443/api`. Errors are JSON in the form `{ "error": "mess
 | `POST /invites/revoke` | Owner | `{ code }` | `204`, adds it to the blacklist |
 | `GET /servers` | Signed in | | `200` the user's servers, with their keys for open channels |
 | `PATCH /servers/:serverId` | Member | `{ name }` | `204` |
-| `GET /servers/:serverId/members` | Member | | `200` members with public keys and role ids |
+| `GET /servers/:serverId/members` | Member | | `200` members with public keys, role ids and online status |
 | `DELETE /servers/:serverId/members/:userId` | Admin. Not yourself or the owner. | | `204`, replaces the server key |
 | `PUT /servers/:serverId/members/:userId/roles` | Admin | `{ roleIds }` | `204` |
 | `GET /servers/:serverId/roles` | Member | | `200` roles |
@@ -178,6 +181,10 @@ The base URL is `<host>:8443/api`. Errors are JSON in the form `{ "error": "mess
 | `DELETE /uploads/:uploadId` | The uploader | | `204` |
 | `GET /attachments/:attachmentId` | Allowed members | Supports `Range` | `200` or `206` encrypted bytes |
 | `GET /images/:imageId` | Allowed members | Old images only. Query: `download` | `200` image bytes |
+| `PUT /users/me/avatar` | Signed in | Raw PNG, JPEG or WebP, up to 2 MB | `200 { avatarId }` |
+| `DELETE /users/me/avatar` | Signed in | | `204` |
+| `GET /avatars/:avatarId` | Its owner, or anyone sharing a server with them | | `200` image |
+| `PUT /servers/:serverId/nickname` | Member | `{ nickname }`, empty to clear | `204` |
 | `GET /dms` | Signed in | | `200` the user's conversations |
 | `POST /dms` | Signed in, sharing a server | `{ userId, wrappedKeySelf, wrappedKeyOther }` | `201` conversation |
 
@@ -216,6 +223,8 @@ Each of these takes an acknowledgement, which replies `{ ok: true, data }` or `{
 | `access:changed` | `{ serverId }` | People whose channel access or keys changed |
 | `keys:needed` | `{ serverId }` | That server, so a browser with the keys can share them |
 | `dm:created` | `{ id }` | The other person |
+| `dm:updated` | `{}` | DM partners, when someone's picture changes |
+| `presence:changed` | `{ serverId, userId, online }` | Each server that person is in |
 | `server:keyChanged` | `{ serverId }` | That server |
 | `member:removed` | `{ serverId }` | The person removed |
 | `voice:rosters` | List of `{ channelId, participants }` it may see | The socket that just connected |
@@ -276,6 +285,7 @@ owner belongs to every server and can read those anyway.
   version that steals keys. Encryption stops casual or after-the-fact reading, but friends still have to trust the
   person running the server not to change the code.
 - **Voice:** it's encrypted on the way to the server, but the server could technically listen.
+- **Profile pictures:** they aren't end-to-end encrypted, so they're readable on the server's disk.
 - **Metadata:** who sent what and when, who talks to whom, sizes, and server, channel and role names.
 - **Usernames, from the server's operator:** they're encrypted with `DATA_ENCRYPTION_KEY`, which protects against a stolen
   database, but that key is on the server.
@@ -292,9 +302,9 @@ owner belongs to every server and can read those anyway.
 
 | Table | Contents |
 |---|---|
-| `users` | `username_hash`, `username_enc`, `password_hash` (of the login key), `kdf_salt`, `public_key`, wrapped private keys, `recovery_verifier_hash`, `is_owner` |
+| `users` | `username_hash`, `username_enc`, `password_hash` (of the login key), `kdf_salt`, `public_key`, wrapped private keys, `recovery_verifier_hash`, `is_owner`, `avatar_id` |
 | `servers` | `slot` (its position in `INVITE_CODE`), `name`, `root_key_version` |
-| `server_members` | Membership |
+| `server_members` | Membership, and `nickname_enc` (encrypted with `DATA_ENCRYPTION_KEY`) |
 | `server_keys` | Each version of the server key, encrypted with `DATA_ENCRYPTION_KEY` |
 | `revoked_codes` | The blacklist: a hash of each revoked code |
 | `roles`, `member_roles`, `channel_roles` | Roles, who holds them and which channels they open. `is_admin` marks the built-in admin role. |
@@ -305,7 +315,7 @@ owner belongs to every server and can read those anyway.
 **MongoDB:** the `messages` collection has `channelId` or `dmId`, `authorId`, `encrypted`, `ciphertext`, `keyVersion`,
 `attachment` (`id`, `encryptedSize`) and `createdAt`. Messages from before encryption have `content` and `image` instead.
 
-**Disk:** each file is stored in `UPLOAD_DIR`, named with a random UUID. Unfinished uploads end in `.part` and are removed
+**Disk:** each file is stored in `UPLOAD_DIR`, named with a random UUID. Profile pictures are in its `avatars` folder. Unfinished uploads end in `.part` and are removed
 after an hour idle, or at startup.
 
 Deleting a channel also deletes its messages and files. Servers are created at startup from

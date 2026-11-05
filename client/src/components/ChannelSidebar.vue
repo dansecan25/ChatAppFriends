@@ -10,8 +10,10 @@ import { useVoiceStore } from '@/stores/voiceStore';
 import type { ChannelType, MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
+import { useUserDisplay } from '@/composables/useUserDisplay';
 import AppIcon from './AppIcon.vue';
 import CreateChannelDialog from './CreateChannelDialog.vue';
+import ProfileDialog from './ProfileDialog.vue';
 import ServerSettingsDialog from './ServerSettingsDialog.vue';
 import ServerSwitcher from './ServerSwitcher.vue';
 import UserAvatar from './UserAvatar.vue';
@@ -28,6 +30,9 @@ const servers = useServerStore();
 const dms = useDmStore();
 const messages = useMessageStore();
 
+const { nameFor, avatarFor } = useUserDisplay();
+
+const profileOpen = ref(false);
 const settingsOpen = ref(false);
 const pickingDm = ref(false);
 const dialogType = ref<ChannelType | null>(null);
@@ -158,11 +163,12 @@ async function logout(): Promise<void> {
             <li v-for="person in voice.rosters[channel.id]" :key="person.userId">
               <UserAvatar
                 :user-id="person.userId"
-                :username="person.username"
+                :username="nameFor(person.userId, person.username)"
+                :avatar-id="avatarFor(person.userId)"
                 :size="24"
                 :speaking="voice.speakingUserIds.has(person.userId)"
               />
-              <span class="name">{{ person.username }}</span>
+              <span class="name">{{ nameFor(person.userId, person.username) }}</span>
               <AppIcon v-if="person.deafened" name="headphonesOff" :size="15" class="state" />
               <AppIcon v-else-if="person.muted" name="micOff" :size="15" class="state" />
             </li>
@@ -180,15 +186,15 @@ async function logout(): Promise<void> {
         <ul v-if="pickingDm" class="picker">
           <li v-for="member in dmCandidates" :key="member.id">
             <button class="channel" @click="startDm(member)">
-              <UserAvatar :user-id="member.id" :username="member.username" :size="24" />
-              <span class="name">{{ member.username }}</span>
+              <UserAvatar :user-id="member.id" :username="nameFor(member.id, member.username)" :avatar-id="member.avatarId" :size="24" />
+              <span class="name">{{ nameFor(member.id, member.username) }}</span>
             </button>
           </li>
           <li v-if="dmCandidates.length === 0" class="hint">No one else is in this server yet.</li>
         </ul>
         <div v-for="dm in dms.dms" :key="dm.id" class="row" :class="{ active: dm.id === activeDmId }">
           <button class="channel" :class="{ unread: channels.unread.has(`d${dm.id}`) }" @click="openDm(dm.id)">
-            <UserAvatar :user-id="dm.otherUser.id" :username="dm.otherUser.username" :size="24" />
+            <UserAvatar :user-id="dm.otherUser.id" :username="dm.otherUser.username" :avatar-id="dm.otherUser.avatarId" :size="24" />
             <span class="name">{{ dm.otherUser.username }}</span>
             <span v-if="channels.unread.has(`d${dm.id}`)" class="dot" aria-label="Unread messages" />
           </button>
@@ -202,8 +208,14 @@ async function logout(): Promise<void> {
     <VoiceControls />
 
     <footer v-if="auth.user" class="me">
-      <UserAvatar :user-id="auth.user.id" :username="auth.user.username" :size="30" />
-      <span class="name">{{ auth.user.username }}</span>
+      <UserAvatar :user-id="auth.user.id" :username="nameFor(auth.user.id, auth.user.username)" :avatar-id="auth.user.avatarId" :size="30" />
+      <span class="who">
+        <span class="name">{{ nameFor(auth.user.id, auth.user.username) }}</span>
+        <span v-if="nameFor(auth.user.id, auth.user.username) !== auth.user.username" class="account">{{ auth.user.username }}</span>
+      </span>
+      <button class="icon-btn" aria-label="Edit profile" title="Edit profile" @click="profileOpen = true">
+        <AppIcon name="settings" :size="18" />
+      </button>
       <button class="icon-btn" aria-label="Sign out" title="Sign out" @click="logout">
         <AppIcon name="logout" :size="18" />
       </button>
@@ -216,6 +228,7 @@ async function logout(): Promise<void> {
       @created="onCreated"
     />
     <ServerSettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
+    <ProfileDialog v-if="profileOpen" @close="profileOpen = false" />
   </aside>
 </template>
 
@@ -311,6 +324,23 @@ h2 {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

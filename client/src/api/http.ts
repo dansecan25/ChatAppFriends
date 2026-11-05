@@ -10,12 +10,15 @@ export class ApiError extends Error {
 }
 
 /** Sends a JSON request with the session cookie and unwraps the response. */
-export async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  options: { method?: string; body?: unknown; blob?: Blob } = {},
+): Promise<T> {
   const response = await fetch(`${API_URL}/api${path}`, {
     method: options.method ?? 'GET',
     credentials: 'include',
     headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.blob ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
   });
   if (response.status === 204) return undefined as T;
 

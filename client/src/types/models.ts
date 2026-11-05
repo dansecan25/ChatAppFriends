@@ -8,6 +8,7 @@ export interface User {
 
 export interface Profile extends User {
   isOwner: boolean;
+  avatarId: string | null;
 }
 
 export interface Channel {

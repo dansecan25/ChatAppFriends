@@ -17,6 +17,7 @@ export async function createSecurityTables(): Promise<void> {
     CREATE TABLE IF NOT EXISTS server_members (
       server_id INT UNSIGNED NOT NULL,
       user_id INT UNSIGNED NOT NULL,
+      nickname_enc TEXT NULL,
       PRIMARY KEY (server_id, user_id),
       KEY server_members_user (user_id),
       FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE,
@@ -103,7 +104,7 @@ export const hasColumn = async (table: string, column: string): Promise<boolean>
 
 /** Tells whether the database is missing part of the current schema. */
 export const needsMigration = async (): Promise<boolean> =>
-  (await hasColumn('users', 'username')) || !(await hasColumn('servers', 'slot'));
+  (await hasColumn('users', 'username')) || !(await hasColumn('servers', 'slot')) || !(await hasColumn('users', 'avatar_id'));
 
 /** Creates all tables on an empty database, and refuses to start on an unmigrated one. */
 export async function ensureSchema(): Promise<void> {
@@ -125,6 +126,7 @@ export async function ensureSchema(): Promise<void> {
       recovery_wrapped_private_key TEXT NULL,
       recovery_verifier_hash CHAR(64) NULL,
       is_owner TINYINT(1) NOT NULL DEFAULT 0,
+      avatar_id VARCHAR(64) NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ${TABLE_OPTIONS}`);
   await pool.query(`

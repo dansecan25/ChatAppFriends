@@ -1,4 +1,5 @@
 import { pool } from '../connections/mariadb.js';
+import { decryptField, encryptField } from '../utils/fieldCrypto.js';
 
 export interface Server {
   id: number;
@@ -77,6 +78,25 @@ export async function listMemberIds(serverId: number): Promise<number[]> {
     [serverId],
   );
   return rows.map((row) => row.userId);
+}
+
+/** Sets or clears a member's nickname in a server. */
+export async function setNickname(serverId: number, userId: number, nickname: string | null): Promise<void> {
+  await pool.query('UPDATE server_members SET nickname_enc = ? WHERE server_id = ? AND user_id = ?', [
+    nickname === null ? null : encryptField(nickname),
+    serverId,
+    userId,
+  ]);
+}
+
+/** Returns the nicknames in a server, keyed by user id. */
+export async function listNicknames(serverId: number): Promise<Map<number, string>> {
+  const rows: { userId: number; nicknameEnc: string }[] = await pool.query(
+    `SELECT user_id AS userId, nickname_enc AS nicknameEnc FROM server_members
+     WHERE server_id = ? AND nickname_enc IS NOT NULL`,
+    [serverId],
+  );
+  return new Map(rows.map((row) => [row.userId, decryptField(row.nicknameEnc)]));
 }
 
 /** Adds a member unless the server is full. Returns whether the member was added. */

@@ -138,7 +138,10 @@ onMounted(async () => {
         <ul class="plain-list">
           <li v-for="member in servers.members" :key="member.id">
             <div class="row">
-              <strong>{{ member.username }}</strong>
+              <span class="who">
+                <strong>{{ member.nickname ?? member.username }}</strong>
+                <span v-if="member.nickname" class="account">{{ member.username }}</span>
+              </span>
               <button v-if="canRemove(member)" class="btn small" @click="removeMember(member)">Remove</button>
             </div>
             <div v-if="isAdmin" class="choices">
@@ -205,6 +208,17 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account {
+  color: var(--text-faint);
+  font-size: 0.72rem;
 }
 
 .small {

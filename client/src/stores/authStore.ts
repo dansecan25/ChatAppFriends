@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import * as authApi from '@/api/authApi';
 import { ApiError } from '@/api/http';
+import * as profileApi from '@/api/profileApi';
 import * as serverApi from '@/api/serverApi';
 import { clearKeyring } from '@/services/crypto/keyring';
 import {
@@ -16,7 +17,7 @@ import { codeVerifier, deriveFromPassword } from '@/services/crypto/primitives';
 import type { ProfileDto } from '@/types/dto';
 import type { Profile } from '@/types/models';
 
-const toProfile = ({ id, username, isOwner }: ProfileDto): Profile => ({ id, username, isOwner });
+const toProfile = ({ id, username, isOwner, avatarId }: ProfileDto): Profile => ({ id, username, isOwner, avatarId });
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<Profile | null>(null);
@@ -85,6 +86,13 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = toProfile(profile);
   }
 
+  /** Sets or removes this account's profile picture. */
+  async function setAvatar(picture: Blob | null): Promise<void> {
+    const avatarId = picture ? (await profileApi.putAvatar(picture)).avatarId : null;
+    if (!picture) await profileApi.deleteAvatar();
+    if (user.value) user.value.avatarId = avatarId;
+  }
+
   /** Signs out and removes the keys from this device. */
   async function logout(): Promise<void> {
     await authApi.logout();
@@ -93,5 +101,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null;
   }
 
-  return { user, pendingRecoveryCode, restoreSession, login, register, redeem, recover, logout };
+  return { user, pendingRecoveryCode, restoreSession, login, register, redeem, recover, setAvatar, logout };
 });

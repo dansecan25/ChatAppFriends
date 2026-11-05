@@ -9,7 +9,12 @@ async function toDtoFor(dm: DmConversation, userId: number) {
   const other = (await findUsersByIds([otherId])).get(otherId);
   return {
     id: dm.id,
-    otherUser: { id: otherId, username: other?.username ?? 'Deleted user', publicKey: other?.publicKey ?? null },
+    otherUser: {
+      id: otherId,
+      username: other?.username ?? 'Deleted user',
+      publicKey: other?.publicKey ?? null,
+      avatarId: other?.avatarId ?? null,
+    },
     wrappedKey: dm.userLow === userId ? dm.wrappedKeyLow : dm.wrappedKeyHigh,
   };
 }

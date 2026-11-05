@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import PasswordInput from '@/components/PasswordInput.vue';
 import { useAuthStore } from '@/stores/authStore';
 import { errorMessage } from '@/utils/errors';
 
@@ -35,7 +36,7 @@ async function submit(): Promise<void> {
       <p class="hint">Your messages stay readable with the recovery key you saved when you signed up.</p>
       <label class="field">Username<input v-model="username" autocomplete="username" required maxlength="32" autofocus /></label>
       <label class="field">Recovery key<input v-model="recoveryCode" autocomplete="off" required /></label>
-      <label class="field">New password<input v-model="password" type="password" autocomplete="new-password" required minlength="8" /></label>
+      <label class="field">New password<PasswordInput v-model="password" autocomplete="new-password" required minlength="8" /></label>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <button class="btn btn-primary" :disabled="submitting">Set new password</button>
       <RouterLink class="switch" :to="{ name: 'login' }">Back to sign in</RouterLink>

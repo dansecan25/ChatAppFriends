@@ -7,6 +7,7 @@ export interface UserDto {
 
 export interface ProfileDto extends UserDto {
   isOwner: boolean;
+  avatarId: string | null;
   needsKeySetup: boolean;
 }
 
@@ -29,9 +30,12 @@ export interface ServerDto {
 }
 
 export interface MemberDto extends UserDto {
+  nickname: string | null;
+  avatarId: string | null;
   publicKey: string | null;
   isOwner: boolean;
   roleIds: number[];
+  online: boolean;
 }
 
 export interface RoleDto {
@@ -66,7 +70,7 @@ export interface KeyWorkDto {
 
 export interface DmDto {
   id: number;
-  otherUser: UserDto & { publicKey: string | null };
+  otherUser: UserDto & { publicKey: string | null; avatarId: string | null };
   wrappedKey: string;
 }
 

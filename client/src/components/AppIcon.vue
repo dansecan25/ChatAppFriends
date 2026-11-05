@@ -15,10 +15,13 @@ const paths = {
   close: 'M6 6l12 12M18 6 6 18',
   menu: 'M4 7h16M4 12h16M4 17h16',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
+  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7ZM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+  eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a18 18 0 0 1-3.2 4M6.4 6.4A18 18 0 0 0 2 12s4 7 10 7a10 10 0 0 0 4.6-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2',
   lock: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3',
   unlock: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 5.6-1.5',
   settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4h4V5zM6 15v4h4v-4z',
   dm: 'M4 5h16v11H9l-5 4z',
+  users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5c1.8.8 3 2.8 3 5.5',
 } as const;
 
 defineProps<{ name: keyof typeof paths; size?: number }>();

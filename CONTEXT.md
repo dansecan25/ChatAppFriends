@@ -52,6 +52,8 @@ or `.env` contents.
   servers in the same order, so code `[0]` is Leonas and code `[1]` is SufriTEC. Users can't create servers.
 - A code's users only see that server, unless they join another with its code under server settings.
 - Any member can rename their own server.
+- Users set their own profile picture, and a nickname per server. Account names can't change. DMs show the account name,
+  because nicknames belong to a server.
 - Revoking a code only blocks new use of it. People who already joined keep their access.
 - Removing a member is the way to take someone's access away. It replaces the server key, but they can rejoin with the
   code until it's revoked and replaced.

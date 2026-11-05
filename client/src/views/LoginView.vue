@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import PasswordInput from '@/components/PasswordInput.vue';
 import { useAuthStore } from '@/stores/authStore';
 import { errorMessage } from '@/utils/errors';
 
@@ -48,9 +49,8 @@ async function submit(): Promise<void> {
       </label>
       <label class="field">
         Password
-        <input
+        <PasswordInput
           v-model="password"
-          type="password"
           :autocomplete="isRegister ? 'new-password' : 'current-password'"
           required
           :minlength="isRegister ? 8 : 1"

@@ -57,6 +57,16 @@ export const useServerStore = defineStore('servers', () => {
     if (server) server.name = name;
   }
 
+  /** Finds someone in the server on screen. */
+  const memberFor = (userId: number): MemberDto | undefined => members.value.find((member) => member.id === userId);
+
+  /** Updates someone's online status in the server on screen. */
+  function applyPresence(serverId: number, userId: number, online: boolean): void {
+    if (serverId !== activeId.value) return;
+    const member = members.value.find((candidate) => candidate.id === userId);
+    if (member) member.online = online;
+  }
+
   /** Clears everything on sign-out. */
   function reset(): void {
     servers.value = [];
@@ -66,5 +76,5 @@ export const useServerStore = defineStore('servers', () => {
     loaded.value = false;
   }
 
-  return { servers, loaded, activeId, active, members, roles, fetchServers, fetchMembership, select, applyRename, reset };
+  return { servers, loaded, activeId, active, members, roles, fetchServers, fetchMembership, select, memberFor, applyRename, applyPresence, reset };
 });

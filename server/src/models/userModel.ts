@@ -17,6 +17,7 @@ export interface KeyBundle {
 export interface UserRecord extends AuthUser {
   passwordHash: string;
   isOwner: boolean;
+  avatarId: string | null;
   kdfSalt: string | null;
   publicKey: string | null;
   wrappedPrivateKey: string | null;
@@ -25,7 +26,7 @@ export interface UserRecord extends AuthUser {
 }
 
 const SELECT_USER = `
-  SELECT id, username_enc AS usernameEnc, password_hash AS passwordHash, is_owner AS isOwner, kdf_salt AS kdfSalt,
+  SELECT id, username_enc AS usernameEnc, password_hash AS passwordHash, is_owner AS isOwner, avatar_id AS avatarId, kdf_salt AS kdfSalt,
     public_key AS publicKey, wrapped_private_key AS wrappedPrivateKey,
     recovery_wrapped_private_key AS recoveryWrappedPrivateKey, recovery_verifier_hash AS recoveryVerifierHash
   FROM users`;
@@ -110,6 +111,17 @@ export async function updateLogin(
     wrappedPrivateKey,
     id,
   ]);
+}
+
+/** Sets or clears a user's profile picture. */
+export async function setAvatarId(id: number, avatarId: string | null): Promise<void> {
+  await pool.query('UPDATE users SET avatar_id = ? WHERE id = ?', [avatarId, id]);
+}
+
+/** Finds who a profile picture belongs to. */
+export async function findUserByAvatarId(avatarId: string): Promise<UserRecord | null> {
+  const rows = await pool.query(`${SELECT_USER} WHERE avatar_id = ?`, [avatarId]);
+  return rows[0] ? toRecord(rows[0]) : null;
 }
 
 /** Returns the owner's id, if the owner has signed up. */

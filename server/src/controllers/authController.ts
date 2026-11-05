@@ -53,6 +53,7 @@ const toProfile = (user: UserRecord) => ({
   id: user.id,
   username: user.username,
   isOwner: user.isOwner,
+  avatarId: user.avatarId,
   needsKeySetup: !user.kdfSalt,
 });
 

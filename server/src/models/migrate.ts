@@ -18,7 +18,8 @@ async function migrateUsers(): Promise<void> {
       ADD COLUMN IF NOT EXISTS wrapped_private_key TEXT NULL,
       ADD COLUMN IF NOT EXISTS recovery_wrapped_private_key TEXT NULL,
       ADD COLUMN IF NOT EXISTS recovery_verifier_hash CHAR(64) NULL,
-      ADD COLUMN IF NOT EXISTS is_owner TINYINT(1) NOT NULL DEFAULT 0`);
+      ADD COLUMN IF NOT EXISTS is_owner TINYINT(1) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS avatar_id VARCHAR(64) NULL`);
   const users: { id: number; username: string }[] = await pool.query('SELECT id, username FROM users');
   for (const user of users) {
     await pool.query('UPDATE users SET username_hash = ?, username_enc = ? WHERE id = ?', [

@@ -1,19 +1,30 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useUserDisplay } from '@/composables/useUserDisplay';
 import type { Message } from '@/types/models';
 import AppIcon from './AppIcon.vue';
 import ImageAttachment from './ImageAttachment.vue';
 import UserAvatar from './UserAvatar.vue';
 
-defineProps<{ message: Message; grouped: boolean }>();
+const props = defineProps<{ message: Message; grouped: boolean }>();
+
+const { nameFor, avatarFor } = useUserDisplay();
+
+/** Nicknames belong to a server, so DMs always show the account name. */
+const authorName = computed(() =>
+  props.message.threadKey.startsWith('d')
+    ? props.message.author.username
+    : nameFor(props.message.author.id, props.message.author.username),
+);
 defineEmits<{ imageLoaded: [] }>();
 </script>
 
 <template>
   <article class="message" :class="{ grouped }">
-    <UserAvatar v-if="!grouped" :user-id="message.author.id" :username="message.author.username" />
+    <UserAvatar v-if="!grouped" :user-id="message.author.id" :username="authorName" :avatar-id="avatarFor(message.author.id)" />
     <div class="body">
       <header v-if="!grouped">
-        <strong>{{ message.author.username }}</strong>
+        <strong :title="message.author.username">{{ authorName }}</strong>
         <time :datetime="message.createdAt.toISOString()">{{ message.timeLabel }}</time>
         <span v-if="message.protection === 'legacy'" class="legacy" title="Sent before encryption, so the server can read it">
           <AppIcon name="unlock" :size="12" /> Not encrypted

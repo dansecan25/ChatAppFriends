@@ -11,7 +11,7 @@ import {
 import { claimOwnership } from '../models/userModel.js';
 import { sha256Hex } from '../utils/fieldCrypto.js';
 import { HttpError } from '../utils/httpError.js';
-import { subscribeUserToServer } from './realtimeService.js';
+import { emitToServer, subscribeUserToServer } from './realtimeService.js';
 
 export type ResolvedCode = { kind: 'master' } | { kind: 'server'; serverId: number };
 
@@ -44,6 +44,7 @@ export async function applyCode(resolved: ResolvedCode, userId: number): Promise
     throw new HttpError(403, `This server is full (${config.MAX_USERS} members)`);
   }
   subscribeUserToServer(userId, serverId);
+  emitToServer(serverId, 'roles:changed', { serverId });
 }
 
 /** Joins another server while signed in. */

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppIcon from '@/components/AppIcon.vue';
 import ChannelSidebar from '@/components/ChannelSidebar.vue';
 import MessageComposer from '@/components/MessageComposer.vue';
+import MemberList from '@/components/MemberList.vue';
 import MessageList from '@/components/MessageList.vue';
 import { useRealtime } from '@/composables/useRealtime';
 import { requireIdentity } from '@/services/crypto/identity';
@@ -23,6 +24,7 @@ const dms = useDmStore();
 const messages = useMessageStore();
 
 const sidebarOpen = ref(false);
+const membersOpen = ref(false);
 const loadError = ref<string | null>(null);
 const safety = ref<string | null>(null);
 
@@ -129,6 +131,9 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
           </span>
         </template>
         <span v-if="!connected" class="offline" role="status">Reconnecting…</span>
+        <button v-if="activeChannel" class="icon-btn members-toggle" aria-label="Show members" @click="membersOpen = !membersOpen">
+          <AppIcon name="users" />
+        </button>
       </header>
 
       <p v-if="loadError" class="form-error banner" role="alert">{{ loadError }}</p>
@@ -146,6 +151,8 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
         <p>Create one from the sidebar to start chatting.</p>
       </div>
     </main>
+
+    <MemberList v-if="activeChannel" :channel="activeChannel" class="members" :class="{ open: membersOpen }" />
   </div>
 </template>
 
@@ -203,8 +210,33 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
   color: var(--text-faint);
 }
 
-.menu {
+.menu,
+.members-toggle {
   display: none;
+}
+
+.members {
+  width: 240px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1000px) {
+  .members-toggle {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .members {
+    display: none;
+  }
+
+  .members.open {
+    display: block;
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 20;
+    width: min(260px, 85vw);
+  }
 }
 
 .offline {

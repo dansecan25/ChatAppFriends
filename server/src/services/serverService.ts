@@ -10,6 +10,7 @@ import {
   insertRootKey,
   insertServer,
   listMemberIds,
+  listNicknames,
   listRootKeys,
   listServersForUser,
   renameServer,
@@ -19,6 +20,7 @@ import { SERVER_DEFINITIONS } from '../serverDefinitions.js';
 import { decryptField, encryptField } from '../utils/fieldCrypto.js';
 import { HttpError } from '../utils/httpError.js';
 import { isServerAdmin } from './accessService.js';
+import { isOnline } from './presenceService.js';
 import { emitToServer, emitToUsers, unsubscribeUserFromServer } from './realtimeService.js';
 import { applyAccessChange } from './roleService.js';
 import { removeUserFromVoiceChannel } from './voiceService.js';
@@ -71,12 +73,27 @@ export async function rename(serverId: number, name: string): Promise<void> {
 
 /** Lists a server's members with what others need to share keys with them. */
 export async function getMembers(serverId: number) {
-  const [ids, roles] = await Promise.all([listMemberIds(serverId), listMemberRoleIds(serverId)]);
+  const [ids, roles, nicknames] = await Promise.all([
+    listMemberIds(serverId),
+    listMemberRoleIds(serverId),
+    listNicknames(serverId),
+  ]);
   const users = await findUsersByIds(ids);
   return ids.flatMap((id) => {
     const user = users.get(id);
     return user
-      ? [{ id, username: user.username, publicKey: user.publicKey, isOwner: user.isOwner, roleIds: roles.get(id) ?? [] }]
+      ? [
+          {
+            id,
+            username: user.username,
+            nickname: nicknames.get(id) ?? null,
+            avatarId: user.avatarId,
+            publicKey: user.publicKey,
+            isOwner: user.isOwner,
+            roleIds: roles.get(id) ?? [],
+            online: isOnline(id),
+          },
+        ]
       : [];
   });
 }

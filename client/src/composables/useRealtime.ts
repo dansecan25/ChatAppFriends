@@ -36,6 +36,7 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     connected.value = true;
     servers.servers.forEach((server) => doKeyWork(server.id));
     if (hasConnectedBefore) {
+      void servers.fetchMembership();
       void refreshChannels();
       void dms.fetchDms();
       if (activeThread.value) void messages.loadLatest(activeThread.value);
@@ -75,6 +76,8 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
   const onRolesChanged = () => void servers.fetchMembership();
   const onKeysNeeded = ({ serverId }: { serverId: number }) => doKeyWork(serverId);
   const onDmCreated = () => void dms.fetchDms();
+  const onPresence = ({ serverId, userId, online }: { serverId: number; userId: number; online: boolean }) =>
+    servers.applyPresence(serverId, userId, online);
   const onServerKeyChanged = ({ serverId }: { serverId: number }) => void refreshRootKeys(serverId);
   /** Leaves a server this user was removed from. With no server left, they're asked for a new code. */
   const onMemberRemoved = async () => {
@@ -94,6 +97,8 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     ['roles:changed', onRolesChanged],
     ['keys:needed', onKeysNeeded],
     ['dm:created', onDmCreated],
+    ['dm:updated', onDmCreated],
+    ['presence:changed', onPresence],
     ['server:keyChanged', onServerKeyChanged],
     ['member:removed', onMemberRemoved],
     ['voice:rosters', voice.setRosters],

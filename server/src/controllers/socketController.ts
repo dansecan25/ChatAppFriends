@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireSocketAuth } from '../middlewares/auth.js';
 import type { AuthUser } from '../models/userModel.js';
 import { listServersForUser } from '../models/serverModel.js';
+import { userConnected, userDisconnected } from '../services/presenceService.js';
 import { serverRoom, userRoom } from '../services/realtimeService.js';
 import * as voiceService from '../services/voiceService.js';
 import { HttpError } from '../utils/httpError.js';
@@ -39,6 +40,7 @@ function onConnection(socket: Socket): void {
   const user = socket.data.user as AuthUser;
 
   void socket.join(userRoom(user.id));
+  userConnected(user.id);
   void listServersForUser(user.id)
     .then((servers) => socket.join(servers.map((server) => serverRoom(server.id))))
     .then(() => voiceService.getVoiceRosters(user.id))
@@ -66,7 +68,10 @@ function onConnection(socket: Socket): void {
   );
   handle(socket, 'voice:leave', z.object({}), async () => voiceService.leaveVoice(socket.id));
 
-  socket.on('disconnect', () => voiceService.leaveVoice(socket.id));
+  socket.on('disconnect', () => {
+    voiceService.leaveVoice(socket.id);
+    userDisconnected(user.id);
+  });
 }
 
 /** Registers authentication and socket handlers on the server. */

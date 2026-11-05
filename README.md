@@ -12,6 +12,8 @@ runs on your own server.
 - **Direct messages:** private conversations that only the two people in them can read, not even the owner.
 - **Roles:** admins create roles, and a channel can be limited to chosen roles. Its encryption key only goes to those
   people.
+- **Member list:** each channel shows who can use it, with a green bubble for those online.
+- **Profiles:** everyone can set a profile picture, and a nickname for each server. Account names can't change.
 - **Voice chat:** mute, deafen and speaking indicators, with audio routed through the server.
 - **Images up to 1 GB:** upload progress and cancel. PNG, JPEG, GIF, WebP, AVIF and BMP are accepted, and images over
   25 MB load only when asked.

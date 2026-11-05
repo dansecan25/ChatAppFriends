@@ -1,4 +1,5 @@
 export const MAX_IMAGE_BYTES = 1024 ** 3;
+const AVATAR_PIXELS = 256;
 const AUTO_LOAD_LIMIT_BYTES = 25 * 1024 ** 2;
 
 /** Tells whether an image is too large to download without asking. */
@@ -30,3 +31,28 @@ export function sniffImageType(header: Uint8Array): string | null {
 /** Reads a blob's first bytes and returns its image type. */
 export const sniffBlobType = async (blob: Blob): Promise<string | null> =>
   sniffImageType(new Uint8Array(await blob.slice(0, 16).arrayBuffer()));
+
+/** Crops a picture to a small centred square, which also strips data such as location from the original. */
+export async function toAvatarBlob(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = AVATAR_PIXELS;
+  canvas.height = AVATAR_PIXELS;
+  const context = canvas.getContext('2d') as CanvasRenderingContext2D;
+  context.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    AVATAR_PIXELS,
+    AVATAR_PIXELS,
+  );
+  bitmap.close();
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not read that picture'))), 'image/webp', 0.85);
+  });
+}
