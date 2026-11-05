@@ -14,4 +14,6 @@ channelRoutes.post('/:channelId/keys', channelController.shareKeys);
 channelRoutes.post('/:channelId/rotate', channelController.rotate);
 channelRoutes.get('/:channelId/messages', messageController.list);
 channelRoutes.post('/:channelId/messages', messageController.create);
+channelRoutes.patch('/:channelId/messages/:messageId', messageController.edit);
+channelRoutes.delete('/:channelId/messages/:messageId', messageController.remove);
 channelRoutes.post('/:channelId/uploads', fileController.startUpload);

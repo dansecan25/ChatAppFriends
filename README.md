@@ -12,6 +12,8 @@ runs on your own server.
 - **Direct messages:** private conversations that only the two people in them can read, not even the owner.
 - **Roles:** admins create roles, and a channel can be limited to chosen roles. Its encryption key only goes to those
   people.
+- **Editing and deleting messages:** people can edit and delete their own messages, and admins can delete anyone's in a
+  channel. DMs stay private, so only the sender can delete there.
 - **Mentions:** type `@` for people and `#` for channels, with suggestions as you type. Mentions of you are highlighted.
 - **Notifications:** browser notifications for DMs, mentions and new messages while a tab is open. Each channel can be
   muted, which still lets mentions of you through.

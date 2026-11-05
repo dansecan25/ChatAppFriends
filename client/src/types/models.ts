@@ -44,6 +44,7 @@ export interface Message {
   protection: MessageProtection;
   createdAt: Date;
   timeLabel: string;
+  editedAt: Date | null;
 }
 
 export interface VoiceParticipant {

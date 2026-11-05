@@ -98,6 +98,7 @@ export interface MessageDto {
   content: string | null;
   image: LegacyImageDto | null;
   createdAt: string;
+  editedAt: string | null;
 }
 
 export interface VoiceParticipantDto {

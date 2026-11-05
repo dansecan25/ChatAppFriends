@@ -5,16 +5,19 @@ import type { MessageScope } from '../models/messageModel.js';
 import * as messageService from '../services/messageService.js';
 import { idSchema } from './schemas.js';
 
+const messageIdSchema = z.string().regex(/^[a-f\d]{24}$/i);
+
 const pageSchema = z.object({
-  before: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+  before: messageIdSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
-const postSchema = z.object({
+const editSchema = z.object({
   ciphertext: z.string().min(1).max(32_768),
   keyVersion: z.number().int().min(0),
-  uploadId: z.uuid().optional(),
 });
+
+const postSchema = editSchema.extend({ uploadId: z.uuid().optional() });
 
 /** Reads a route's message location from its parameters. */
 export const scopeOf = (req: Request): MessageScope =>
@@ -29,4 +32,16 @@ export async function list(req: Request, res: Response): Promise<void> {
 /** POST /channels/:channelId/messages and /dms/:dmId/messages */
 export async function create(req: Request, res: Response): Promise<void> {
   res.status(201).json(await messageService.postMessage(scopeOf(req), currentUser(req), postSchema.parse(req.body)));
+}
+
+/** PATCH /channels/:channelId/messages/:messageId and /dms/:dmId/messages/:messageId */
+export async function edit(req: Request, res: Response): Promise<void> {
+  const messageId = messageIdSchema.parse(req.params.messageId);
+  res.json(await messageService.editMessage(scopeOf(req), currentUser(req).id, messageId, editSchema.parse(req.body)));
+}
+
+/** DELETE /channels/:channelId/messages/:messageId and /dms/:dmId/messages/:messageId */
+export async function remove(req: Request, res: Response): Promise<void> {
+  await messageService.deleteMessage(scopeOf(req), currentUser(req).id, messageIdSchema.parse(req.params.messageId));
+  res.status(204).end();
 }

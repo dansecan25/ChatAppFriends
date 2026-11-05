@@ -97,6 +97,7 @@ onMounted(scrollToBottom);
       v-for="(message, index) in messages"
       :key="message.id"
       :message="message"
+      :thread="thread"
       :grouped="isGrouped(index)"
       @image-loaded="onImageLoaded"
     />

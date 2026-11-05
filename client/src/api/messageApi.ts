@@ -21,6 +21,17 @@ export const postMessage = (
   body: { ciphertext: string; keyVersion: number; uploadId?: string },
 ): Promise<MessageDto> => request(`${threadPath(thread)}/messages`, { method: 'POST', body });
 
+/** Replaces a message with a new encrypted version. */
+export const patchMessage = (
+  thread: ThreadRef,
+  messageId: string,
+  body: { ciphertext: string; keyVersion: number },
+): Promise<MessageDto> => request(`${threadPath(thread)}/messages/${messageId}`, { method: 'PATCH', body });
+
+/** Deletes a message. */
+export const deleteMessage = (thread: ThreadRef, messageId: string): Promise<void> =>
+  request(`${threadPath(thread)}/messages/${messageId}`, { method: 'DELETE' });
+
 /** Starts an encrypted upload. */
 export const startUpload = (thread: ThreadRef): Promise<{ uploadId: string }> =>
   request(`${threadPath(thread)}/uploads`, { method: 'POST' });

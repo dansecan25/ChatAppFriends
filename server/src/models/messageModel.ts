@@ -30,6 +30,7 @@ export interface MessageDocument {
   content?: string;
   image?: LegacyImage | null;
   createdAt: Date;
+  editedAt?: Date;
 }
 
 const messages = (): Collection<MessageDocument> => getMongoDb().collection<MessageDocument>('messages');
@@ -47,6 +48,28 @@ export async function findMessages(scope: MessageScope, limit: number, before?: 
   return messages().find(filter).sort({ _id: -1 }).limit(limit).toArray();
 }
 
+/** Finds a message, only if it lives in that channel or DM. */
+export async function findMessageInScope(scope: MessageScope, id: string): Promise<MessageDocument | null> {
+  return messages().findOne({ ...scope, _id: new ObjectId(id) });
+}
+
+/** Replaces a message's encrypted contents and returns the saved document. */
+export async function updateMessageContent(
+  id: ObjectId,
+  content: { ciphertext: string; keyVersion: number; editedAt: Date },
+): Promise<MessageDocument | null> {
+  return messages().findOneAndUpdate({ _id: id }, { $set: content }, { returnDocument: 'after' });
+}
+
+/** Deletes one message. */
+export async function deleteMessageById(id: ObjectId): Promise<void> {
+  await messages().deleteOne({ _id: id });
+}
+
+/** Lists the stored files of a message, both old images and encrypted files. */
+export const fileIdsOf = (message: Pick<MessageDocument, 'image' | 'attachment'>): string[] =>
+  [message.image?.id, message.attachment?.id].filter((id): id is string => !!id);
+
 /** Finds the message holding an old readable image. */
 export async function findMessageByImageId(imageId: string): Promise<MessageDocument | null> {
   return messages().findOne({ 'image.id': imageId });
@@ -62,7 +85,7 @@ export async function findChannelFileIds(channelId: number): Promise<string[]> {
   const rows = await messages()
     .find({ channelId }, { projection: { image: 1, attachment: 1 } })
     .toArray();
-  return rows.flatMap((row) => [row.image?.id, row.attachment?.id].filter((id): id is string => !!id));
+  return rows.flatMap(fileIdsOf);
 }
 
 /** Deletes every message in a channel. */

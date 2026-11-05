@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { membersOf, useChannelStore } from '@/stores/channelStore';
 import { useDmStore } from '@/stores/dmStore';
 import { useServerStore } from '@/stores/serverStore';
-import { encodeMentions, type MentionablePerson } from '@/utils/mentions';
+import { encodeMentions, mentionsToText, type MentionablePerson } from '@/utils/mentions';
 
 export interface MentionOption {
   key: string;
@@ -114,5 +114,16 @@ export function useMentionPicker(thread: Ref<Thread>, text: Ref<string>, input: 
   /** Prepares typed text for sending. */
   const encode = (content: string) => encodeMentions(content, people.value, mentionableChannels.value);
 
-  return { options, selected, sync, close, choose, onKeydown, encode };
+  /** Turns a saved message back into what the author would type. A channel they can't see stays as it was. */
+  const decode = (content: string) =>
+    mentionsToText(
+      content,
+      (part) => `@${people.value.find((person) => person.id === part.id)?.name ?? part.name}`,
+      (id) => {
+        const channel = mentionableChannels.value.find((candidate) => candidate.id === id);
+        return channel ? `#${channel.name}` : `<#${id}>`;
+      },
+    );
+
+  return { options, selected, sync, close, choose, onKeydown, encode, decode };
 }

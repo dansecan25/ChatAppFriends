@@ -53,6 +53,13 @@ export async function closeNotifications(threadKey?: string): Promise<void> {
   shown.filter((item) => !threadKey || item.data?.threadKey === threadKey).forEach((item) => item.close());
 }
 
+/** Clears the notification for a message that was deleted. */
+export async function closeMessageNotification(messageId: string): Promise<void> {
+  if (!notificationsSupported() || Notification.permission !== 'granted') return;
+  const shown = (await (await getRegistration())?.getNotifications({ tag: messageId })) ?? [];
+  shown.forEach((item) => item.close());
+}
+
 /** Calls back when a notification is clicked. Returns a function that stops listening. */
 export function listenForOpens(callback: (target: NotificationTarget) => void): () => void {
   onOpen = callback;

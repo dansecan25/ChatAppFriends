@@ -1,6 +1,10 @@
 import {
+  deleteMessageById,
+  fileIdsOf,
+  findMessageInScope,
   findMessages,
   insertMessage,
+  updateMessageContent,
   type Attachment,
   type LegacyImage,
   type MessageDocument,
@@ -11,7 +15,7 @@ import { findServerById } from '../models/serverModel.js';
 import { shareServer } from '../models/dmModel.js';
 import { findUsersByIds, type AuthUser } from '../models/userModel.js';
 import { HttpError } from '../utils/httpError.js';
-import { channelAudience, requireDmAccess, requireScopeAccess } from './accessService.js';
+import { channelAudience, isServerAdmin, requireDmAccess, requireScopeAccess } from './accessService.js';
 import { deleteStoredFile, finishUpload } from './fileService.js';
 import { emitToUsers } from './realtimeService.js';
 
@@ -27,6 +31,7 @@ export interface MessageDto {
   content: string | null;
   image: LegacyImage | null;
   createdAt: string;
+  editedAt: string | null;
 }
 
 export interface EncryptedInput {
@@ -51,6 +56,7 @@ const toDtos = async (messages: MessageDocument[]): Promise<MessageDto[]> => {
     content: message.content ?? null,
     image: message.image ?? null,
     createdAt: message.createdAt.toISOString(),
+    editedAt: message.editedAt?.toISOString() ?? null,
   }));
 };
 
@@ -105,4 +111,63 @@ export async function postMessage(scope: MessageScope, author: AuthUser, input: 
     if (attachment) await deleteStoredFile(attachment.id);
     throw err;
   }
+}
+
+/** Returns a message the user can see in that channel or DM. */
+async function requireMessage(scope: MessageScope, userId: number, messageId: string): Promise<MessageDocument> {
+  await requireScopeAccess(scope, userId);
+  const message = await findMessageInScope(scope, messageId);
+  if (!message) throw new HttpError(404, 'Message not found');
+  return message;
+}
+
+/** Replaces the author's own message with a new encrypted version. Only they can write it, so admins can't. */
+export async function editMessage(
+  scope: MessageScope,
+  userId: number,
+  messageId: string,
+  input: Omit<EncryptedInput, 'uploadId'>,
+): Promise<MessageDto> {
+  const message = await requireMessage(scope, userId, messageId);
+  if (message.authorId !== userId) throw new HttpError(403, 'You can only edit your own messages');
+  if (!message.encrypted) throw new HttpError(400, 'Messages from before encryption can\'t be edited');
+  const recipients = await resolveRecipients(scope, userId, input.keyVersion);
+  const updated = await updateMessageContent(message._id, { ...input, editedAt: new Date() });
+  if (!updated) throw new HttpError(404, 'Message not found');
+  const [dto] = await toDtos([updated]);
+  emitToUsers(recipients, 'message:updated', dto);
+  return dto;
+}
+
+/** Admins can remove messages in their server's channels. DMs stay between the two people. */
+async function canModerate(scope: MessageScope, userId: number): Promise<boolean> {
+  if ('dmId' in scope) return false;
+  const channel = await findChannelById(scope.channelId);
+  return !!channel && isServerAdmin(channel.serverId, userId);
+}
+
+/** Lists who can see a message, so they all see it go. */
+async function audienceOf(scope: MessageScope, userId: number): Promise<number[]> {
+  if ('dmId' in scope) {
+    const dm = await requireDmAccess(scope.dmId, userId);
+    return [dm.userLow, dm.userHigh];
+  }
+  const channel = await findChannelById(scope.channelId);
+  return channel ? channelAudience(channel) : [];
+}
+
+/** Deletes a message and its files, for its author or an admin who can see it. */
+export async function deleteMessage(scope: MessageScope, userId: number, messageId: string): Promise<void> {
+  const message = await requireMessage(scope, userId, messageId);
+  if (message.authorId !== userId && !(await canModerate(scope, userId))) {
+    throw new HttpError(403, 'You can only delete your own messages');
+  }
+  const audience = await audienceOf(scope, userId);
+  await deleteMessageById(message._id);
+  emitToUsers(audience, 'message:deleted', {
+    id: messageId,
+    channelId: message.channelId ?? null,
+    dmId: message.dmId ?? null,
+  });
+  await Promise.all(fileIdsOf(message).map(deleteStoredFile));
 }

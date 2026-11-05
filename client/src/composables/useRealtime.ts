@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router';
 import { toChannel } from '@/mappers/channelMapper';
 import { forgetChannelKeys, refreshRootKeys, threadKeyOf, type Thread } from '@/services/crypto/keyring';
 import { runKeyWork } from '@/services/keySharing';
+import { closeMessageNotification } from '@/services/notifications';
 import { socket } from '@/services/socketClient';
 import { useChannelStore } from '@/stores/channelStore';
 import { useDmStore } from '@/stores/dmStore';
@@ -65,6 +66,14 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     if (!onScreen) channels.markUnread(key);
     notifications.notifyOf(message, thread, onScreen && document.hasFocus());
   };
+  const onMessageUpdated = async (dto: MessageDto) => {
+    const thread = await threadOf(dto);
+    if (thread) await messages.applyEdit(dto, thread);
+  };
+  const onMessageDeleted = ({ id, channelId, dmId }: { id: string; channelId: number | null; dmId: number | null }) => {
+    messages.removeMessage(dmId !== null ? `d${dmId}` : `c${channelId}`, id);
+    void closeMessageNotification(id);
+  };
   const onChannelCreated = (dto: ChannelDto) => {
     if (dto.serverId === servers.activeId) channels.addChannel(toChannel(dto));
     else channels.remember(toChannel(dto));
@@ -95,6 +104,8 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     ['connect', onConnect],
     ['disconnect', onDisconnect],
     ['message:new', onMessage],
+    ['message:updated', onMessageUpdated],
+    ['message:deleted', onMessageDeleted],
     ['channel:created', onChannelCreated],
     ['channel:deleted', onChannelDeleted],
     ['server:renamed', onRenamed],

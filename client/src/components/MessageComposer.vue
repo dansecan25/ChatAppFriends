@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, toRef } from 'vue';
+import { ref } from 'vue';
 import { useImageUploads } from '@/composables/useImageUploads';
-import { useMentionPicker } from '@/composables/useMentionPicker';
 import type { Thread } from '@/services/crypto/keyring';
 import { useAuthStore } from '@/stores/authStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { errorMessage } from '@/utils/errors';
 import { validateImageFile } from '@/utils/images';
 import AppIcon from './AppIcon.vue';
+import MentionTextarea from './MentionTextarea.vue';
 
 const props = defineProps<{ thread: Thread; placeholder: string }>();
 
@@ -20,8 +20,7 @@ const sending = ref(false);
 const error = ref<string | null>(null);
 const dragging = ref(false);
 const fileInput = ref<HTMLInputElement>();
-const textarea = ref<HTMLTextAreaElement>();
-const picker = useMentionPicker(toRef(props, 'thread'), text, textarea);
+const field = ref<InstanceType<typeof MentionTextarea>>();
 
 /** Sends the typed message, restoring the text when it fails. */
 async function send(): Promise<void> {
@@ -30,23 +29,14 @@ async function send(): Promise<void> {
   sending.value = true;
   error.value = null;
   text.value = '';
-  picker.close();
+  field.value?.close();
   try {
-    await messages.send(props.thread, (auth.user as { id: number }).id, picker.encode(content));
+    await messages.send(props.thread, (auth.user as { id: number }).id, field.value?.encode(content) ?? content);
   } catch (err) {
     text.value = content;
     error.value = errorMessage(err, 'Could not send the message');
   } finally {
     sending.value = false;
-  }
-}
-
-/** Sends on Enter; Shift+Enter inserts a new line. */
-function onKeydown(event: KeyboardEvent): void {
-  if (picker.onKeydown(event)) return;
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-    event.preventDefault();
-    void send();
   }
 }
 
@@ -59,7 +49,8 @@ function addFiles(files: Iterable<File>): void {
       error.value = `${file.name}: ${problem}`;
       continue;
     }
-    void start(props.thread, file, picker.encode(text.value.trim()));
+    const caption = text.value.trim();
+    void start(props.thread, file, field.value?.encode(caption) ?? caption);
     text.value = '';
   }
 }
@@ -110,31 +101,17 @@ function onDrop(event: DragEvent): void {
       @dragleave="dragging = false"
       @drop.prevent="onDrop"
     >
-      <ul v-if="picker.options.value.length" class="mentions" role="listbox" aria-label="Mention suggestions">
-        <li v-for="(option, index) in picker.options.value" :key="option.key" role="option" :aria-selected="index === picker.selected.value">
-          <button type="button" :class="{ selected: index === picker.selected.value }" @mousedown.prevent @click="picker.choose(option)">
-            <span class="label">{{ option.label }}</span>
-            <span v-if="option.detail" class="detail">{{ option.detail }}</span>
-          </button>
-        </li>
-      </ul>
       <button type="button" class="icon-btn" aria-label="Attach image" title="Attach image (max 1 GB)" @click="fileInput?.click()">
         <AppIcon name="image" />
       </button>
       <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp" multiple hidden @change="onFilePicked" />
-      <textarea
-        ref="textarea"
+      <MentionTextarea
+        ref="field"
         v-model="text"
-        rows="1"
-        maxlength="4000"
+        :thread="thread"
         :placeholder="placeholder"
         :aria-label="placeholder"
-        @keydown="onKeydown"
-        @input="picker.sync"
-        @click="picker.sync"
-        @keyup.left="picker.sync"
-        @keyup.right="picker.sync"
-        @blur="picker.close"
+        @submit="send"
         @paste="onPaste"
       />
       <button class="icon-btn send" aria-label="Send message" :disabled="!text.trim() || sending">
@@ -163,70 +140,8 @@ function onDrop(event: DragEvent): void {
   background: var(--bg-raised);
 }
 
-.mentions {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 0.35rem);
-  left: 0;
-  z-index: 5;
-  overflow: hidden;
-  margin: 0;
-  padding: 0.25rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-raised);
-  list-style: none;
-}
-
-.mentions button {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.4rem 0.55rem;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.mentions button.selected,
-.mentions button:hover {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.mentions .label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mentions .detail {
-  color: var(--text-faint);
-  font-size: 0.78rem;
-}
-
 .box.dragging {
   border-color: var(--accent);
-}
-
-textarea {
-  flex: 1;
-  min-width: 0;
-  max-height: 160px;
-  padding: 0.38rem 0.25rem;
-  border: none;
-  outline: none;
-  background: none;
-  field-sizing: content;
-  resize: none;
-}
-
-textarea::placeholder {
-  color: var(--text-faint);
 }
 
 .send:not(:disabled) {

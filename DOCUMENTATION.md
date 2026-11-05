@@ -134,7 +134,8 @@ the first text channel. It connects the socket while open.
 | `CreateChannelDialog` | Creates a channel, optionally limited to roles | `POST /api/servers/:id/channels` |
 | `VoiceControls` | Shows the voice connection, with mute, deafen and leave | `voice:setState`, `voice:leave` |
 | `MemberList` | Lists who can use the open channel, split into online and offline. Hidden in DMs, and behind a button on small screens. | `GET /api/servers/:id/members`, `presence:changed` |
-| `MessageList`, `MessageItem` | Show messages and load older ones. Old unencrypted messages are marked, and mentions of you are highlighted. | `GET .../messages?before=<id>` |
+| `MessageList`, `MessageItem` | Show messages and load older ones, with edit and delete buttons for those allowed. Old unencrypted messages are marked, and mentions of you are highlighted. | `GET .../messages?before=<id>`, `DELETE .../messages/:id` |
+| `MessageEditor`, `MentionTextarea` | Edit a message in place, re-encrypting it in the browser. The text box and its `@` and `#` suggestions are shared with `MessageComposer`. | `PATCH .../messages/:id` |
 | `ImageAttachment` | Downloads and decrypts an image, with a load button over 25 MB | `GET /api/attachments/:id`, or `GET /api/images/:id` for old images |
 | `MessageComposer` | Encrypts and sends text and images, suggesting people and channels for `@` and `#` | `POST .../messages`, `POST .../uploads`, `PUT /api/uploads/:id/chunks/:index`, `DELETE /api/uploads/:id` |
 | `keySharing` | Shares restricted channel keys with newly allowed members, and replaces them after someone loses access | `GET /api/servers/:id/key-work`, `POST /api/channels/:id/keys`, `POST /api/channels/:id/rotate` |
@@ -180,6 +181,8 @@ The base URL is `<host>:8443/api`. Errors are JSON in the form `{ "error": "mess
 | `POST /channels/:channelId/rotate` | Allowed members | `{ version, envelopes }` | `204`, or `409` if already replaced |
 | `GET /channels/:channelId/messages`, `GET /dms/:dmId/messages` | Allowed members | Query: `limit` (1-100, default 50), `before` (message id) | `200` messages, oldest first |
 | `POST /channels/:channelId/messages`, `POST /dms/:dmId/messages` | Allowed members | `{ ciphertext, keyVersion, uploadId? }` | `201` message, or `409` if the channel's key changed |
+| `PATCH /channels/:channelId/messages/:messageId`, `PATCH /dms/:dmId/messages/:messageId` | The author | `{ ciphertext, keyVersion }` | `200` message, or `409` if the channel's key changed |
+| `DELETE /channels/:channelId/messages/:messageId`, `DELETE /dms/:dmId/messages/:messageId` | The author, or a server admin who can see that channel. DMs have no admin exception. | | `204` |
 | `POST /channels/:channelId/uploads`, `POST /dms/:dmId/uploads` | Allowed members | | `201 { uploadId }` |
 | `PUT /uploads/:uploadId/chunks/:index` | The uploader | Raw encrypted bytes, up to 4 MB plus 16 bytes | `204` |
 | `DELETE /uploads/:uploadId` | The uploader | | `204` |
@@ -220,6 +223,8 @@ Each of these takes an acknowledgement, which replies `{ ok: true, data }` or `{
 | Event | Payload | Sent to |
 |---|---|---|
 | `message:new` | Encrypted message | Those allowed in that channel or DM |
+| `message:updated` | Encrypted message, after an edit | Those allowed in that channel or DM |
+| `message:deleted` | `{ id, channelId, dmId }` | Those allowed in that channel or DM |
 | `channel:created` | Channel | Those allowed in it |
 | `channel:deleted` | `{ id, serverId }` | Those allowed in it |
 | `server:renamed` | `{ id, name }` | That server |
@@ -311,6 +316,9 @@ owner belongs to every server and can read those anyway.
 - **Profile pictures:** they aren't end-to-end encrypted, so they're readable on the server's disk.
 - **Notifications:** they show the decrypted text through the browser and operating system, so it can appear on a lock
   screen.
+- **Edits and deletions, from whoever controls the server:** the database keeps only the latest version, but the server
+  could hide an edit, restore an earlier version or remove a message. Deleted text may also remain in database backups, and
+  in anything people already saved.
 - **Metadata:** who sent what and when, who talks to whom, sizes, and server, channel and role names.
 - **Usernames, from the server's operator:** they're encrypted with `DATA_ENCRYPTION_KEY`, which protects against a stolen
   database, but that key is on the server.

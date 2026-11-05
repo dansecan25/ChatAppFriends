@@ -5,7 +5,7 @@ import { notificationsSupported, showNotification } from '@/services/notificatio
 import { useChannelStore } from '@/stores/channelStore';
 import { useServerStore } from '@/stores/serverStore';
 import type { Message } from '@/types/models';
-import { mentionedChannelIds, mentionsUser, parseMentions } from '@/utils/mentions';
+import { mentionedChannelIds, mentionsToText, mentionsUser } from '@/utils/mentions';
 
 interface Preferences {
   enabled: boolean;
@@ -78,13 +78,11 @@ export const useNotificationStore = defineStore('notifications', () => {
 
   /** Shows mentions by name, as they'd read in the chat. */
   function readableText(message: Message): string {
-    const text = parseMentions(message.content)
-      .map((part) => {
-        if (part.kind === 'text') return part.text;
-        if (part.kind === 'user') return `@${servers.memberFor(part.id)?.nickname ?? part.name}`;
-        return `#${channels.findKnown(part.id)?.name ?? 'private-channel'}`;
-      })
-      .join('');
+    const text = mentionsToText(
+      message.content,
+      (part) => `@${servers.memberFor(part.id)?.nickname ?? part.name}`,
+      (id) => `#${channels.findKnown(id)?.name ?? 'private-channel'}`,
+    );
     if (text) return text.slice(0, MAX_BODY_LENGTH);
     return message.image ? 'Sent an image' : 'New message';
   }

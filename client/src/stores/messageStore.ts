@@ -59,7 +59,20 @@ export const useMessageStore = defineStore('messages', () => {
     return message;
   }
 
-  /** Encrypts and sends a message. If the channel's key just changed, gets the new key and tries once more. */
+  /** Runs an encrypted write. If the channel's key just changed, gets the new key and tries once more. */
+  async function withCurrentKey(thread: Thread, write: () => Promise<MessageDto>): Promise<MessageDto> {
+    try {
+      return await write();
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== KEY_CHANGED_STATUS || thread.kind !== 'channel') throw err;
+      await runKeyWork(thread.serverId);
+      forgetChannelKeys(thread.id);
+      await refreshRootKeys(thread.serverId);
+      return write();
+    }
+  }
+
+  /** Encrypts and sends a message. */
   async function send(
     thread: Thread,
     authorId: number,
@@ -70,15 +83,40 @@ export const useMessageStore = defineStore('messages', () => {
       const sealed = await encryptMessage(thread, authorId, { text, file: attachment?.file ?? null });
       return messageApi.postMessage(thread, { ...sealed, uploadId: attachment?.uploadId });
     };
-    try {
-      await receive(await post(), thread);
-    } catch (err) {
-      if (!(err instanceof ApiError) || err.status !== KEY_CHANGED_STATUS || thread.kind !== 'channel') throw err;
-      await runKeyWork(thread.serverId);
-      forgetChannelKeys(thread.id);
-      await refreshRootKeys(thread.serverId);
-      await receive(await post(), thread);
-    }
+    await receive(await withCurrentKey(thread, post), thread);
+  }
+
+  /** Re-encrypts a message with new text, keeping its image. */
+  async function edit(thread: Thread, message: Message, authorId: number, text: string): Promise<void> {
+    const file = message.image?.source.kind === 'encrypted' ? message.image.source.file : null;
+    const dto = await withCurrentKey(thread, async () =>
+      messageApi.patchMessage(thread, message.id, await encryptMessage(thread, authorId, { text, file })),
+    );
+    await applyEdit(dto, thread);
+  }
+
+  /** Shows a new version of a cached message, ignoring one older than what's on screen. */
+  async function applyEdit(dto: MessageDto, thread: Thread): Promise<void> {
+    const key = threadKeyOf(thread);
+    if (!threadState(key).messages.some((existing) => existing.id === dto.id)) return;
+    const updated = await toMessage(dto, thread);
+    const list = threadState(key).messages;
+    const index = list.findIndex((existing) => existing.id === dto.id);
+    if (index === -1) return;
+    const shownEdit = list[index].editedAt?.getTime() ?? 0;
+    if ((updated.editedAt?.getTime() ?? 0) >= shownEdit) list[index] = updated;
+  }
+
+  /** Deletes a message on the server and from view. */
+  async function remove(thread: Thread, messageId: string): Promise<void> {
+    await messageApi.deleteMessage(thread, messageId);
+    removeMessage(threadKeyOf(thread), messageId);
+  }
+
+  /** Takes a deleted message out of view. */
+  function removeMessage(threadKey: string, messageId: string): void {
+    const state = threadState(threadKey);
+    state.messages = state.messages.filter((existing) => existing.id !== messageId);
   }
 
   /** Drops the cache for a deleted channel. */
@@ -91,5 +129,19 @@ export const useMessageStore = defineStore('messages', () => {
     byThread.value = {};
   }
 
-  return { byThread, threadState, loadLatest, loadOlder, addMessage, receive, send, removeThread, reset };
+  return {
+    byThread,
+    threadState,
+    loadLatest,
+    loadOlder,
+    addMessage,
+    receive,
+    send,
+    edit,
+    applyEdit,
+    remove,
+    removeMessage,
+    removeThread,
+    reset,
+  };
 });

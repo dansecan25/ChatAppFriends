@@ -63,6 +63,16 @@ export function parseMentions(text: string): MessagePart[] {
   return parts;
 }
 
+/** Rebuilds a message's text, with the caller choosing how each mention reads. */
+export const mentionsToText = (
+  text: string,
+  person: (part: Extract<MessagePart, { kind: 'user' }>) => string,
+  channel: (id: number) => string,
+): string =>
+  parseMentions(text)
+    .map((part) => (part.kind === 'text' ? part.text : part.kind === 'user' ? person(part) : channel(part.id)))
+    .join('');
+
 /** Tells whether a message mentions a person. */
 export const mentionsUser = (text: string, userId: number): boolean =>
   parseMentions(text).some((part) => part.kind === 'user' && part.id === userId);

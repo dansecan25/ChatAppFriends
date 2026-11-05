@@ -27,6 +27,7 @@ export async function toMessage(dto: MessageDto, thread: Thread): Promise<Messag
     author: toUser(dto.author),
     createdAt,
     timeLabel: formatMessageTime(createdAt),
+    editedAt: dto.editedAt ? new Date(dto.editedAt) : null,
   };
   if (!dto.encrypted) {
     return {
