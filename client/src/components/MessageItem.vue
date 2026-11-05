@@ -9,11 +9,14 @@ import { useServerStore } from '@/stores/serverStore';
 import type { Thread } from '@/services/crypto/keyring';
 import type { Message } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
-import { mentionsUser, parseMentions } from '@/utils/mentions';
+import { findEmbeds, splitLinks, type TextOrLink } from '@/utils/links';
+import { mentionsUser, parseMentions, type MessagePart } from '@/utils/mentions';
 import AppIcon from './AppIcon.vue';
 import ImageAttachment from './ImageAttachment.vue';
 import MessageEditor from './MessageEditor.vue';
+import TweetEmbed from './TweetEmbed.vue';
 import UserAvatar from './UserAvatar.vue';
+import YouTubeEmbed from './YouTubeEmbed.vue';
 
 const props = defineProps<{ message: Message; thread: Thread; grouped: boolean }>();
 
@@ -26,13 +29,17 @@ const { nameFor, avatarFor } = useUserDisplay();
 
 const inDm = computed(() => props.message.threadKey.startsWith('d'));
 const readable = computed(() => props.message.protection !== 'locked');
-const parts = computed(() =>
-  readable.value ? parseMentions(props.message.content) : [{ kind: 'text' as const, text: props.message.content }],
+/** Text, links and mentions, in order. An unreadable message is shown as its error text. */
+const parts = computed<(MessagePart | TextOrLink)[]>(() =>
+  readable.value
+    ? parseMentions(props.message.content).flatMap<MessagePart | TextOrLink>((part) => (part.kind === 'text' ? splitLinks(part.text) : [part]))
+    : [{ kind: 'text' as const, text: props.message.content }],
 );
 const isMine = computed(() => props.message.author.id === auth.user?.id);
 const canEdit = computed(() => isMine.value && props.message.protection === 'encrypted');
 const canDelete = computed(() => isMine.value || (!inDm.value && servers.active?.isAdmin === true));
 const editing = ref(false);
+const embeds = computed(() => (readable.value && !editing.value ? findEmbeds(props.message.content) : []));
 const actionError = ref<string | null>(null);
 const mentionsMe = computed(() => readable.value && mentionsUser(props.message.content, auth.user?.id ?? 0));
 
@@ -80,6 +87,7 @@ async function remove(): Promise<void> {
       <p v-else-if="message.content || message.editedAt" class="content" :class="{ locked: !readable }">
         <template v-for="(part, index) in parts" :key="index">
           <template v-if="part.kind === 'text'">{{ part.text }}</template>
+          <a v-else-if="part.kind === 'link'" :href="part.url" target="_blank" rel="noopener noreferrer">{{ part.url }}</a>
           <span v-else-if="part.kind === 'user'" class="mention">@{{ inDm ? part.name : nameFor(part.id, part.name) }}</span>
           <button
             v-else-if="channels.findKnown(part.id)"
@@ -90,6 +98,12 @@ async function remove(): Promise<void> {
         </template>
         <small v-if="message.editedAt" class="edited" :title="message.editedAt.toLocaleString()"> (edited)</small>
       </p>
+      <div v-if="embeds.length" class="embeds">
+        <template v-for="embed in embeds" :key="`${embed.kind}:${embed.id}`">
+          <YouTubeEmbed v-if="embed.kind === 'youtube'" :video-id="embed.id" :start="embed.start" @loaded="$emit('imageLoaded')" />
+          <TweetEmbed v-else :post-id="embed.id" @loaded="$emit('imageLoaded')" />
+        </template>
+      </div>
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
       <ImageAttachment v-if="message.image" :image="message.image" @loaded="$emit('imageLoaded')" />
     </div>
@@ -136,6 +150,13 @@ async function remove(): Promise<void> {
 .actions .icon-btn {
   width: 30px;
   height: 30px;
+}
+
+.embeds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
 }
 
 .edited {

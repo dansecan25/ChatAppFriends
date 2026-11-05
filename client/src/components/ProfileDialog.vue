@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import * as profileApi from '@/api/profileApi';
+import { installApp, installState, isIos } from '@/services/install';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useServerStore } from '@/stores/serverStore';
@@ -84,7 +85,17 @@ onMounted(() => dialog.value?.showModal());
         <div class="modal-actions"><button class="btn">Save nickname</button></div>
       </form>
 
-      <section class="notifications">
+      <section v-if="!installState.installed.value" class="setting">
+        <strong>App</strong>
+        <template v-if="installState.offer.value">
+          <p class="hint">Install it on this device to open it from your home screen, like an app.</p>
+          <div class="modal-actions"><button class="btn" @click="installApp">Install app</button></div>
+        </template>
+        <p v-else-if="isIos()" class="hint">To install it, open this page in Safari, tap Share, then Add to Home Screen.</p>
+        <p v-else class="hint">To install it, choose Install app or Add to Home screen from your browser's menu.</p>
+      </section>
+
+      <section class="setting">
         <strong>Notifications</strong>
         <template v-if="notifications.permission === 'unsupported'">
           <p class="hint">This browser can't show notifications from a tab.</p>
@@ -109,7 +120,7 @@ onMounted(() => dialog.value?.showModal());
 </template>
 
 <style scoped>
-.notifications {
+.setting {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;

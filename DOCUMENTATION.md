@@ -76,18 +76,22 @@ Data travels `api → mappers → stores → views and components`.
 |---|---|
 | `api/` | HTTP calls. `http.ts` is the shared request function. |
 | `mappers/` | Convert API data (`types/dto.ts`) into display models (`types/models.ts`) |
-| `services/` | `socketClient`, `voiceClient` (WebRTC), `keySharing` (shares and replaces channel keys), `notifications` (browser notifications) |
+| `services/` | `socketClient`, `voiceClient` (WebRTC), `keySharing` (shares and replaces channel keys), `notifications` (browser notifications), `install` (installing as an app) |
 | `services/crypto/` | `primitives` (WebCrypto wrappers), `identity` (account keys on this device), `keyring` (server, channel and DM keys), `messageCrypto`, `fileCrypto` |
 | `stores/` | Pinia state: `authStore`, `serverStore`, `channelStore`, `dmStore`, `messageStore`, `voiceStore`, `notificationStore` |
 | `composables/` | `useRealtime` (socket events into stores), `useImageUploads` (upload progress and cancel), `useMentionPicker` (`@` and `#` suggestions), `useNotificationOpens` (going to a clicked notification's message) |
 | `router/` | Routes and the login guard |
 | `views/` | The pages: `LoginView`, `RecoverView`, `JoinView`, `ChatView` |
 | `components/` | The pieces those pages are built from |
-| `utils/` | Helpers: `env`, `format`, `avatar`, `errors`, `images`, `mentions` |
+| `utils/` | Helpers: `env`, `format`, `avatar`, `errors`, `images`, `mentions`, `links` (clickable links and which ones get a preview) |
 | `styles/main.css` | Global styles |
 
-`client/public/sw.js` is a service worker that only handles clicks on notifications. It has no fetch handler, so it never
-sees or caches app traffic.
+`client/public/` is copied into the build as is:
+
+- `sw.js`: a service worker that only handles clicks on notifications. It has no fetch handler, so it never sees or caches
+  app traffic.
+- `manifest.webmanifest` and `icons/`: let the app be installed to a home screen. Its paths are relative, so they follow
+  the base route. `services/install.ts` keeps the browser's install offer for the button in `ProfileDialog`.
 
 ## Pages
 
@@ -135,12 +139,13 @@ the first text channel. It connects the socket while open.
 | `VoiceControls` | Shows the voice connection, with mute, deafen and leave | `voice:setState`, `voice:leave` |
 | `MemberList` | Lists who can use the open channel, split into online and offline. Hidden in DMs, and behind a button on small screens. | `GET /api/servers/:id/members`, `presence:changed` |
 | `MessageList`, `MessageItem` | Show messages and load older ones, with edit and delete buttons for those allowed. Old unencrypted messages are marked, and mentions of you are highlighted. | `GET .../messages?before=<id>`, `DELETE .../messages/:id` |
+| `YouTubeEmbed`, `TweetEmbed` | Preview YouTube videos and X posts linked in a message, loaded by the browser straight from those sites. A video's player only loads on play. | None |
 | `MessageEditor`, `MentionTextarea` | Edit a message in place, re-encrypting it in the browser. The text box and its `@` and `#` suggestions are shared with `MessageComposer`. | `PATCH .../messages/:id` |
 | `ImageAttachment` | Downloads and decrypts an image, with a load button over 25 MB | `GET /api/attachments/:id`, or `GET /api/images/:id` for old images |
 | `MessageComposer` | Encrypts and sends text and images, suggesting people and channels for `@` and `#` | `POST .../messages`, `POST .../uploads`, `PUT /api/uploads/:id/chunks/:index`, `DELETE /api/uploads/:id` |
 | `keySharing` | Shares restricted channel keys with newly allowed members, and replaces them after someone loses access | `GET /api/servers/:id/key-work`, `POST /api/channels/:id/keys`, `POST /api/channels/:id/rotate` |
 | `voiceClient` (via `voiceStore`) | Runs the WebRTC voice session | All other `voice:*` events; see [Voice connection](#voice-connection) |
-| `ProfileDialog` | Sets the profile picture and this server's nickname, and turns notifications on or off | `PUT` and `DELETE /api/users/me/avatar`, `PUT /api/servers/:id/nickname` |
+| `ProfileDialog` | Sets the profile picture and this server's nickname, installs the app, and turns notifications on or off | `PUT` and `DELETE /api/users/me/avatar`, `PUT /api/servers/:id/nickname` |
 | `NotificationPrompt`, `notificationStore` | Offers to turn notifications on, keeps each browser's choices and channel mutes, and decides what notifies | `message:new` |
 | `UserAvatar` | Shows a profile picture, or initials without one | `GET /api/avatars/:id` |
 | `AppIcon`, `RecoveryKeyDialog` | Display only | None |
@@ -319,6 +324,8 @@ owner belongs to every server and can read those anyway.
 - **Edits and deletions, from whoever controls the server:** the database keeps only the latest version, but the server
   could hide an edit, restore an earlier version or remove a message. Deleted text may also remain in database backups, and
   in anything people already saved.
+- **Link previews:** each browser fetches previews straight from YouTube and X, so those sites see who views which
+  linked video or post, and the server's hostname. They never see other messages.
 - **Metadata:** who sent what and when, who talks to whom, sizes, and server, channel and role names.
 - **Usernames, from the server's operator:** they're encrypted with `DATA_ENCRYPTION_KEY`, which protects against a stolen
   database, but that key is on the server.
@@ -364,4 +371,7 @@ Deleting a channel also deletes its messages and files. Servers are created at s
   to those allowed.
 - **Uploads:** browsers check that a file is a real image before encrypting it and again after decrypting it. SVG is
   rejected, and files are served with a sandboxing Content-Security-Policy.
+- **Embedded players:** YouTube and X load in sandboxed frames from their own sites, allowed by `frame-src` in
+  `deploy/nginx-app.conf`. They can't read the page or its keys, or navigate it away. No third-party script runs in the app
+  itself.
 - **Limits:** the member limit is enforced in a single SQL statement, so simultaneous sign-ups can't pass it.

@@ -14,6 +14,9 @@ runs on your own server.
   people.
 - **Editing and deleting messages:** people can edit and delete their own messages, and admins can delete anyone's in a
   channel. DMs stay private, so only the sender can delete there.
+- **Installable:** phones and computers can add it to the home screen or app list and open it like an app.
+- **Link previews:** YouTube videos and X posts linked in a message show a preview that plays in the chat, and links are
+  clickable. They load straight from those sites, not through the server.
 - **Mentions:** type `@` for people and `#` for channels, with suggestions as you type. Mentions of you are highlighted.
 - **Notifications:** browser notifications for DMs, mentions and new messages while a tab is open. Each channel can be
   muted, which still lets mentions of you through.
