@@ -1,0 +1,27 @@
+[Unit]
+Description=ChatAppFriends backend
+After=network-online.target tailscaled.service mariadb.service mongodb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=chatappfriends
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__ENV_FILE__
+Environment=NODE_ENV=production
+Environment=TLS_CERT_PATH=%d/tls.crt
+Environment=TLS_KEY_PATH=%d/tls.key
+LoadCredential=tls.crt:__TLS_CERT__
+LoadCredential=tls.key:__TLS_KEY__
+ExecStart=__NODE__ server/dist/index.js
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

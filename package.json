@@ -1,0 +1,27 @@
+{
+  "name": "chatappfriends",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted voice, text and image chat for a small group of friends",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "build:client": "npm run build -w client",
+    "build:server": "npm run build -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  },
+  "allowScripts": {
+    "mediasoup@3.32.2": true,
+    "esbuild@0.28.2": true
+  }
+}
