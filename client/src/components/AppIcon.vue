@@ -15,6 +15,10 @@ const paths = {
   close: 'M6 6l12 12M18 6 6 18',
   menu: 'M4 7h16M4 12h16M4 17h16',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
+  lock: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3',
+  unlock: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 5.6-1.5',
+  settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4h4V5zM6 15v4h4v-4z',
+  dm: 'M4 5h16v11H9l-5 4z',
 } as const;
 
 defineProps<{ name: keyof typeof paths; size?: number }>();

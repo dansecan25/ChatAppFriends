@@ -1,3 +1,4 @@
+import type { FilePayload } from '@/services/crypto/messageCrypto';
 import type { ChannelType } from './dto';
 
 export interface User {
@@ -5,30 +6,41 @@ export interface User {
   username: string;
 }
 
+export interface Profile extends User {
+  isOwner: boolean;
+}
+
 export interface Channel {
   id: number;
+  serverId: number;
   name: string;
   type: ChannelType;
+  restricted: boolean;
+  keyVersion: number;
+  rotationPending: boolean;
   createdBy: number | null;
+  roleIds: number[];
 }
 
 export interface MessageImage {
-  id: string;
+  /** Old images have a URL; encrypted ones are fetched and decrypted in the browser. */
+  source: { kind: 'legacy'; url: string; downloadUrl: string } | { kind: 'encrypted'; attachmentId: string; file: FilePayload };
   filename: string;
-  size: number;
   sizeLabel: string;
-  url: string;
-  downloadUrl: string;
   /** Large images wait for a click so nobody downloads a gigabyte by accident. */
   loadsOnDemand: boolean;
 }
 
+/** How far a message's protection goes: `encrypted`, `legacy` from before encryption, or `locked` if unreadable. */
+export type MessageProtection = 'encrypted' | 'legacy' | 'locked';
+
 export interface Message {
   id: string;
-  channelId: number;
+  threadKey: string;
   author: User;
   content: string;
   image: MessageImage | null;
+  protection: MessageProtection;
   createdAt: Date;
   timeLabel: string;
 }

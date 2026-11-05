@@ -297,6 +297,9 @@ same variable when running `npm ci`.
 **Build dependencies need matching versions.** Check a tool's supported versions before upgrading. For example,
 `vue-tsc` didn't support TypeScript 7, so the project stayed on 6.
 
+**Keep schema changes explicit.** Starting an app shouldn't alter an existing database. Use a migration command, run it
+on a copy first, and make the app refuse to start on the old schema.
+
 **A healthy backend doesn't prove the app works.** The health endpoint doesn't test the origin setting, signing in
 or real database queries.
 

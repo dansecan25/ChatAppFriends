@@ -5,6 +5,8 @@ import { getIo } from '../connections/socket.js';
 import { findChannelById } from '../models/channelModel.js';
 import type { AuthUser } from '../models/userModel.js';
 import { HttpError } from '../utils/httpError.js';
+import { channelAudience, requireChannelAccess } from './accessService.js';
+import { emitToUsers } from './realtimeService.js';
 
 export type TransportDirection = 'send' | 'recv';
 
@@ -51,8 +53,15 @@ const toParticipant = (peer: Peer): VoiceParticipant => ({
   deafened: peer.deafened,
 });
 
+/** Tells those who may see a voice channel who is in it. */
 const broadcastRoster = (channelId: number) => {
-  getIo().emit('voice:roster', { channelId, participants: peersInChannel(channelId).map(toParticipant) });
+  void findChannelById(channelId)
+    .then(async (channel) => {
+      if (!channel) return;
+      const participants = peersInChannel(channelId).map(toParticipant);
+      emitToUsers(await channelAudience(channel), 'voice:roster', { channelId, participants });
+    })
+    .catch((err) => console.error('Could not send the voice roster:', err));
 };
 
 const producersInChannel = (channelId: number, exceptSocketId: string) =>
@@ -84,13 +93,18 @@ export function startSpeakerDetection(): void {
   audioLevelObserver.on('silence', () => publishSpeakers(new Set()));
 }
 
-/** Returns who is in each occupied voice channel. */
-export function getVoiceRosters(): { channelId: number; participants: VoiceParticipant[] }[] {
-  const channelIds = new Set([...peers.values()].map((peer) => peer.channelId));
-  return [...channelIds].map((channelId) => ({
-    channelId,
-    participants: peersInChannel(channelId).map(toParticipant),
-  }));
+/** Returns who is in each occupied voice channel this user may see. */
+export async function getVoiceRosters(userId: number): Promise<{ channelId: number; participants: VoiceParticipant[] }[]> {
+  const channelIds = [...new Set([...peers.values()].map((peer) => peer.channelId))];
+  const visible = await Promise.all(
+    channelIds.map(async (channelId) => {
+      const channel = await findChannelById(channelId);
+      return channel && (await channelAudience(channel)).includes(userId) ? channelId : null;
+    }),
+  );
+  return visible
+    .filter((channelId) => channelId !== null)
+    .map((channelId) => ({ channelId, participants: peersInChannel(channelId).map(toParticipant) }));
 }
 
 /** Removes a socket from voice, releasing its media and telling the others. */
@@ -112,10 +126,19 @@ export function removeVoiceChannelPeers(channelId: number): void {
   }
 }
 
+/** Removes someone who just lost access to a voice channel. */
+export function removeUserFromVoiceChannel(channelId: number, userId: number): void {
+  for (const peer of peersInChannel(channelId)) {
+    if (peer.user.id !== userId) continue;
+    getIo().to(peer.socketId).emit('voice:kicked', { reason: 'You no longer have access to this voice channel' });
+    leaveVoice(peer.socketId);
+  }
+}
+
 /** Puts a socket in a voice channel, replacing any other session of the same user. */
 export async function joinVoice(socketId: string, user: AuthUser, channelId: number) {
-  const channel = await findChannelById(channelId);
-  if (channel?.type !== 'voice') throw new HttpError(404, 'Channel not found');
+  const channel = await requireChannelAccess(channelId, user.id);
+  if (channel.type !== 'voice') throw new HttpError(404, 'Channel not found');
 
   leaveVoice(socketId);
   for (const peer of [...peers.values()]) {

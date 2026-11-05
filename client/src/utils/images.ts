@@ -12,3 +12,21 @@ export function validateImageFile(file: File): string | null {
   if (file.size > MAX_IMAGE_BYTES) return 'Images can be at most 1 GB.';
   return null;
 }
+
+const startsWith = (header: Uint8Array, bytes: number[]) => bytes.every((byte, index) => header[index] === byte);
+const ascii = (header: Uint8Array, start: number, end: number) => String.fromCharCode(...header.subarray(start, end));
+
+/** Detects a browser-safe image type from file contents; SVG is excluded because it can run scripts. */
+export function sniffImageType(header: Uint8Array): string | null {
+  if (startsWith(header, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (startsWith(header, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (['GIF87a', 'GIF89a'].includes(ascii(header, 0, 6))) return 'image/gif';
+  if (ascii(header, 0, 4) === 'RIFF' && ascii(header, 8, 12) === 'WEBP') return 'image/webp';
+  if (ascii(header, 4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(header, 8, 12))) return 'image/avif';
+  if (ascii(header, 0, 2) === 'BM') return 'image/bmp';
+  return null;
+}
+
+/** Reads a blob's first bytes and returns its image type. */
+export const sniffBlobType = async (blob: Blob): Promise<string | null> =>
+  sniffImageType(new Uint8Array(await blob.slice(0, 16).arrayBuffer()));

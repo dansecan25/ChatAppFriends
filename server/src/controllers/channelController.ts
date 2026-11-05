@@ -1,28 +1,85 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { currentUser } from '../middlewares/auth.js';
+import { findChannelById } from '../models/channelModel.js';
+import { isServerAdmin, requireMember } from '../services/accessService.js';
 import * as channelService from '../services/channelService.js';
+import * as roleService from '../services/roleService.js';
+import { HttpError } from '../utils/httpError.js';
+import { envelopesSchema, idSchema } from './schemas.js';
 
-export const channelIdSchema = z.coerce.number().int().positive();
+const roleIdsSchema = z.array(z.number().int().positive()).max(50);
 
 const createSchema = z.object({
   name: z.string().trim().min(1, 'Enter a channel name').max(50, 'Channel names can have up to 50 characters'),
   type: z.enum(['text', 'voice']),
+  roleIds: roleIdsSchema.default([]),
+  envelopes: envelopesSchema.default([]),
 });
+const rolesSchema = z.object({ roleIds: roleIdsSchema.min(1, 'Choose at least one role') });
+const shareSchema = z.object({ envelopes: envelopesSchema });
+const rotateSchema = z.object({ version: z.number().int().positive(), envelopes: envelopesSchema });
 
-/** GET /channels */
-export async function list(_req: Request, res: Response): Promise<void> {
-  res.json(await channelService.listChannels());
+const channelIdOf = (req: Request) => idSchema.parse(req.params.channelId);
+
+/** GET /servers/:serverId/channels */
+export async function list(req: Request, res: Response): Promise<void> {
+  const serverId = idSchema.parse(req.params.serverId);
+  const userId = currentUser(req).id;
+  await requireMember(serverId, userId);
+  res.json(await channelService.getVisibleChannels(serverId, userId));
 }
 
-/** POST /channels */
+/** POST /servers/:serverId/channels */
 export async function create(req: Request, res: Response): Promise<void> {
-  const { name, type } = createSchema.parse(req.body);
-  res.status(201).json(await channelService.createChannel(name, type, currentUser(req).id));
+  const serverId = idSchema.parse(req.params.serverId);
+  const userId = currentUser(req).id;
+  await requireMember(serverId, userId);
+  const { name, type, roleIds, envelopes } = createSchema.parse(req.body);
+  res.status(201).json(await channelService.createChannel(serverId, name, type, userId, roleIds, envelopes));
 }
 
 /** DELETE /channels/:channelId */
 export async function remove(req: Request, res: Response): Promise<void> {
-  await channelService.deleteChannel(channelIdSchema.parse(req.params.channelId), currentUser(req).id);
+  await channelService.deleteChannel(channelIdOf(req), currentUser(req).id);
   res.status(204).end();
 }
+
+/** PUT /channels/:channelId/roles */
+export async function setRoles(req: Request, res: Response): Promise<void> {
+  const userId = currentUser(req).id;
+  const channel = await findChannelById(channelIdOf(req));
+  if (!channel) throw new HttpError(404, 'Channel not found');
+  await requireMember(channel.serverId, userId);
+  if (channel.createdBy !== userId && !(await isServerAdmin(channel.serverId, userId))) {
+    throw new HttpError(403, 'Only the channel creator or an admin can change its roles');
+  }
+  res.json(await roleService.updateChannelRoles(channel, rolesSchema.parse(req.body).roleIds));
+}
+
+/** GET /channels/:channelId/keys */
+export async function keys(req: Request, res: Response): Promise<void> {
+  res.json(await channelService.getChannelKeys(channelIdOf(req), currentUser(req).id));
+}
+
+/** POST /channels/:channelId/keys */
+export async function shareKeys(req: Request, res: Response): Promise<void> {
+  await channelService.shareChannelKeys(channelIdOf(req), currentUser(req).id, shareSchema.parse(req.body).envelopes);
+  res.status(204).end();
+}
+
+/** POST /channels/:channelId/rotate */
+export async function rotate(req: Request, res: Response): Promise<void> {
+  const { version, envelopes } = rotateSchema.parse(req.body);
+  await channelService.rotateChannelKey(channelIdOf(req), currentUser(req).id, version, envelopes);
+  res.status(204).end();
+}
+
+/** GET /servers/:serverId/key-work */
+export async function keyWork(req: Request, res: Response): Promise<void> {
+  const serverId = idSchema.parse(req.params.serverId);
+  const userId = currentUser(req).id;
+  await requireMember(serverId, userId);
+  res.json(await channelService.getKeyWork(serverId, userId));
+}
+

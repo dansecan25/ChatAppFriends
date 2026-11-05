@@ -1,20 +1,34 @@
 import { ObjectId, type Collection } from 'mongodb';
 import { getMongoDb } from '../connections/mongodb.js';
 
-export interface ImageAttachment {
+/** A message's location: a channel or a DM conversation. */
+export type MessageScope = { channelId: number } | { dmId: number };
+
+/** An image from before encryption, stored readable on disk. */
+export interface LegacyImage {
   id: string;
   filename: string;
   mimeType: string;
   size: number;
 }
 
+/** An encrypted file. Its name, type and key are inside the encrypted message. */
+export interface Attachment {
+  id: string;
+  encryptedSize: number;
+}
+
 export interface MessageDocument {
   _id: ObjectId;
-  channelId: number;
+  channelId?: number;
+  dmId?: number;
   authorId: number;
-  authorUsername: string;
-  content: string;
-  image: ImageAttachment | null;
+  encrypted?: boolean;
+  ciphertext?: string;
+  keyVersion?: number;
+  attachment?: Attachment | null;
+  content?: string;
+  image?: LegacyImage | null;
   createdAt: Date;
 }
 
@@ -28,23 +42,27 @@ export async function insertMessage(message: Omit<MessageDocument, '_id'>): Prom
 }
 
 /** Returns a page of messages, newest first, optionally older than a message id. */
-export async function findMessages(channelId: number, limit: number, before?: string): Promise<MessageDocument[]> {
-  const filter = before ? { channelId, _id: { $lt: new ObjectId(before) } } : { channelId };
+export async function findMessages(scope: MessageScope, limit: number, before?: string): Promise<MessageDocument[]> {
+  const filter = before ? { ...scope, _id: { $lt: new ObjectId(before) } } : scope;
   return messages().find(filter).sort({ _id: -1 }).limit(limit).toArray();
 }
 
-/** Finds the image metadata for an image id. */
-export async function findImageById(imageId: string): Promise<ImageAttachment | null> {
-  const message = await messages().findOne({ 'image.id': imageId }, { projection: { image: 1 } });
-  return message?.image ?? null;
+/** Finds the message holding an old readable image. */
+export async function findMessageByImageId(imageId: string): Promise<MessageDocument | null> {
+  return messages().findOne({ 'image.id': imageId });
 }
 
-/** Lists the image ids stored in a channel. */
-export async function findChannelImageIds(channelId: number): Promise<string[]> {
+/** Finds the message holding an encrypted file. */
+export async function findMessageByAttachmentId(attachmentId: string): Promise<MessageDocument | null> {
+  return messages().findOne({ 'attachment.id': attachmentId });
+}
+
+/** Lists the stored file ids in a channel, both old images and encrypted files. */
+export async function findChannelFileIds(channelId: number): Promise<string[]> {
   const rows = await messages()
-    .find({ channelId, image: { $ne: null } }, { projection: { image: 1 } })
+    .find({ channelId }, { projection: { image: 1, attachment: 1 } })
     .toArray();
-  return rows.flatMap((row) => (row.image ? [row.image.id] : []));
+  return rows.flatMap((row) => [row.image?.id, row.attachment?.id].filter((id): id is string => !!id));
 }
 
 /** Deletes every message in a channel. */

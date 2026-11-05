@@ -1,16 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
-import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 import { HttpError } from '../utils/httpError.js';
 
 const describe = (err: unknown): { status: number; message: string } | null => {
   if (err instanceof HttpError) return { status: err.status, message: err.message };
   if (err instanceof ZodError) return { status: 400, message: err.issues[0]?.message ?? 'Invalid request' };
-  if (err instanceof MulterError) {
-    return err.code === 'LIMIT_FILE_SIZE'
-      ? { status: 413, message: 'Images can be at most 1 GB' }
-      : { status: 400, message: 'Invalid upload' };
-  }
+  if ((err as { type?: string }).type === 'entity.too.large') return { status: 413, message: 'That is too large' };
   return null;
 };
 

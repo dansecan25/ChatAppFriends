@@ -14,7 +14,12 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(8443),
   CLIENT_ORIGIN: z.url().default('http://localhost:5173'),
   JWT_SECRET: z.string().min(32),
-  INVITE_CODE: z.string().min(6),
+  MASTER_INVITE_CODE: z.string().min(16),
+  INVITE_CODE: z
+    .string()
+    .transform((value) => value.split(',').map((code) => code.trim()))
+    .refine((codes) => codes.every((code) => code.length >= 6), 'Each code needs at least 6 characters'),
+  DATA_ENCRYPTION_KEY: z.string().regex(/^[a-f\d]{64}$/i, 'Must be 64 hex characters'),
   MAX_USERS: z.coerce.number().int().positive().default(20),
   MARIADB_HOST: z.string().default('127.0.0.1'),
   MARIADB_PORT: z.coerce.number().int().positive().default(3306),

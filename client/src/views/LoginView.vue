@@ -39,7 +39,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <main class="login">
+  <main class="center-screen">
     <form class="card" @submit.prevent="submit">
       <h1>{{ isRegister ? 'Join your friends' : 'Welcome back' }}</h1>
       <label class="field">
@@ -67,41 +67,8 @@ async function submit(): Promise<void> {
       <button type="button" class="switch" @click="toggleMode">
         {{ isRegister ? 'Already have an account? Sign in' : 'Have an invite code? Create an account' }}
       </button>
+      <RouterLink v-if="!isRegister" class="switch" :to="{ name: 'recover' }">Forgot your password?</RouterLink>
     </form>
   </main>
 </template>
 
-<style scoped>
-.login {
-  display: grid;
-  place-items: center;
-  min-height: 100%;
-  padding: 16px;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: min(400px, 100%);
-  padding: 2rem;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--bg-main);
-}
-
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-
-.switch {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-.switch:hover {
-  color: var(--text);
-  text-decoration: underline;
-}
-</style>

@@ -3,12 +3,17 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/authStore';
 import { useChannelStore } from '@/stores/channelStore';
+import { useDmStore } from '@/stores/dmStore';
+import { useMessageStore } from '@/stores/messageStore';
+import { useServerStore } from '@/stores/serverStore';
 import { useVoiceStore } from '@/stores/voiceStore';
-import type { ChannelType } from '@/types/dto';
+import type { ChannelType, MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
 import AppIcon from './AppIcon.vue';
 import CreateChannelDialog from './CreateChannelDialog.vue';
+import ServerSettingsDialog from './ServerSettingsDialog.vue';
+import ServerSwitcher from './ServerSwitcher.vue';
 import UserAvatar from './UserAvatar.vue';
 import VoiceControls from './VoiceControls.vue';
 
@@ -19,12 +24,36 @@ const router = useRouter();
 const auth = useAuthStore();
 const channels = useChannelStore();
 const voice = useVoiceStore();
+const servers = useServerStore();
+const dms = useDmStore();
+const messages = useMessageStore();
 
+const settingsOpen = ref(false);
+const pickingDm = ref(false);
 const dialogType = ref<ChannelType | null>(null);
 const actionError = ref<string | null>(null);
 
 const activeId = computed(() => Number(route.params.channelId));
-const canDelete = (channel: Channel) => channel.createdBy === auth.user?.id;
+const activeDmId = computed(() => Number(route.params.dmId));
+const canDelete = (channel: Channel) => channel.createdBy === auth.user?.id || servers.active?.isAdmin === true;
+const dmCandidates = computed(() => servers.members.filter((member) => member.id !== auth.user?.id));
+
+/** Opens a conversation. */
+function openDm(dmId: number): void {
+  void router.push({ name: 'dm', params: { dmId } });
+  emit('navigate');
+}
+
+/** Starts or reopens a conversation with a member. */
+async function startDm(member: MemberDto): Promise<void> {
+  actionError.value = null;
+  try {
+    openDm((await dms.open(member)).id);
+    pickingDm.value = false;
+  } catch (err) {
+    actionError.value = errorMessage(err, 'Could not start the conversation');
+  }
+}
 
 /** Opens a text channel. */
 function openChannel(channel: Channel): void {
@@ -58,13 +87,22 @@ async function removeChannel(channel: Channel): Promise<void> {
 async function logout(): Promise<void> {
   await voice.leave();
   await auth.logout();
+  [servers, channels, dms, messages].forEach((store) => store.reset());
   await router.push({ name: 'login' });
 }
 </script>
 
 <template>
   <aside class="wrap">
+    <ServerSwitcher v-if="auth.user?.isOwner || servers.servers.length > 1" />
+    <header v-if="servers.active" class="server-title">
+      <strong class="name">{{ servers.active.name }}</strong>
+      <button class="icon-btn small" aria-label="Server settings" title="Server settings" @click="settingsOpen = true">
+        <AppIcon name="settings" :size="16" />
+      </button>
+    </header>
     <nav class="channels" aria-label="Channels">
+      <template v-if="servers.active">
       <section>
         <header class="section-title">
           <h2>Text channels</h2>
@@ -75,13 +113,13 @@ async function logout(): Promise<void> {
         <div v-for="channel in channels.textChannels" :key="channel.id" class="row" :class="{ active: channel.id === activeId }">
           <button
             class="channel"
-            :class="{ unread: channels.unread.has(channel.id) }"
+            :class="{ unread: channels.unread.has(`c${channel.id}`) }"
             :aria-current="channel.id === activeId ? 'page' : undefined"
             @click="openChannel(channel)"
           >
-            <AppIcon name="hash" :size="17" />
+            <AppIcon :name="channel.restricted ? 'lock' : 'hash'" :size="17" />
             <span class="name">{{ channel.name }}</span>
-            <span v-if="channels.unread.has(channel.id)" class="dot" aria-label="Unread messages" />
+            <span v-if="channels.unread.has(`c${channel.id}`)" class="dot" aria-label="Unread messages" />
           </button>
           <button
             v-if="canDelete(channel)"
@@ -132,6 +170,32 @@ async function logout(): Promise<void> {
         </template>
       </section>
 
+      <section>
+        <header class="section-title">
+          <h2>Direct messages</h2>
+          <button class="icon-btn small" aria-label="New direct message" @click="pickingDm = !pickingDm">
+            <AppIcon name="plus" :size="16" />
+          </button>
+        </header>
+        <ul v-if="pickingDm" class="picker">
+          <li v-for="member in dmCandidates" :key="member.id">
+            <button class="channel" @click="startDm(member)">
+              <UserAvatar :user-id="member.id" :username="member.username" :size="24" />
+              <span class="name">{{ member.username }}</span>
+            </button>
+          </li>
+          <li v-if="dmCandidates.length === 0" class="hint">No one else is in this server yet.</li>
+        </ul>
+        <div v-for="dm in dms.dms" :key="dm.id" class="row" :class="{ active: dm.id === activeDmId }">
+          <button class="channel" :class="{ unread: channels.unread.has(`d${dm.id}`) }" @click="openDm(dm.id)">
+            <UserAvatar :user-id="dm.otherUser.id" :username="dm.otherUser.username" :size="24" />
+            <span class="name">{{ dm.otherUser.username }}</span>
+            <span v-if="channels.unread.has(`d${dm.id}`)" class="dot" aria-label="Unread messages" />
+          </button>
+        </div>
+      </section>
+      </template>
+
       <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
     </nav>
 
@@ -151,6 +215,7 @@ async function logout(): Promise<void> {
       @close="dialogType = null"
       @created="onCreated"
     />
+    <ServerSettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
   </aside>
 </template>
 
@@ -161,6 +226,21 @@ async function logout(): Promise<void> {
   height: 100dvh;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+}
+
+.server-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  padding: 0 0.6rem 0 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.picker {
+  margin: 0 0 0.35rem;
+  padding: 0;
+  list-style: none;
 }
 
 .channels {

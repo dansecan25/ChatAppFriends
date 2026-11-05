@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useImageUploads } from '@/composables/useImageUploads';
+import type { Thread } from '@/services/crypto/keyring';
+import { useAuthStore } from '@/stores/authStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { errorMessage } from '@/utils/errors';
 import { validateImageFile } from '@/utils/images';
 import AppIcon from './AppIcon.vue';
 
-const props = defineProps<{ channelId: number; channelName: string }>();
+const props = defineProps<{ thread: Thread; placeholder: string }>();
 
+const auth = useAuthStore();
 const messages = useMessageStore();
 const { uploads, uploadError, start } = useImageUploads();
 
@@ -25,7 +28,7 @@ async function send(): Promise<void> {
   error.value = null;
   text.value = '';
   try {
-    await messages.send(props.channelId, content);
+    await messages.send(props.thread, (auth.user as { id: number }).id, content);
   } catch (err) {
     text.value = content;
     error.value = errorMessage(err, 'Could not send the message');
@@ -51,7 +54,7 @@ function addFiles(files: Iterable<File>): void {
       error.value = `${file.name}: ${problem}`;
       continue;
     }
-    void start(props.channelId, file, text.value.trim());
+    void start(props.thread, file, text.value.trim());
     text.value = '';
   }
 }
@@ -110,8 +113,8 @@ function onDrop(event: DragEvent): void {
         v-model="text"
         rows="1"
         maxlength="4000"
-        :placeholder="`Message #${channelName}`"
-        :aria-label="`Message ${channelName}`"
+        :placeholder="placeholder"
+        :aria-label="placeholder"
         @keydown="onKeydown"
         @paste="onPaste"
       />

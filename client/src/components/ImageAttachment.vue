@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { downloadEncryptedFile } from '@/services/crypto/fileCrypto';
 import type { MessageImage } from '@/types/models';
+import { sniffBlobType } from '@/utils/images';
 import AppIcon from './AppIcon.vue';
 
 const props = defineProps<{ image: MessageImage }>();
@@ -8,27 +10,78 @@ defineEmits<{ loaded: [] }>();
 
 const showImage = ref(!props.image.loadsOnDemand);
 const failed = ref(false);
+const decryptedUrl = ref<string | null>(null);
+const saving = ref(false);
+
+const legacy = computed(() => (props.image.source.kind === 'legacy' ? props.image.source : null));
+const displayUrl = computed(() => legacy.value?.url ?? decryptedUrl.value);
+
+/** Downloads and decrypts the file, refusing anything that isn't a safe image once opened. */
+async function decryptToBlob(): Promise<Blob> {
+  const { source } = props.image;
+  if (source.kind !== 'encrypted') throw new Error('Not an encrypted file');
+  const blob = await downloadEncryptedFile(source.attachmentId, source.file, source.file.mimeType);
+  const type = await sniffBlobType(blob);
+  if (!type) throw new Error('Not a supported image');
+  return blob.slice(0, blob.size, type);
+}
+
+/** Decrypts the image once it should be shown. */
+async function load(): Promise<void> {
+  if (legacy.value || decryptedUrl.value) return;
+  try {
+    decryptedUrl.value = URL.createObjectURL(await decryptToBlob());
+  } catch {
+    failed.value = true;
+  }
+}
+
+/** Saves the decrypted file to the user's device. */
+async function save(): Promise<void> {
+  saving.value = true;
+  try {
+    const url = decryptedUrl.value ?? URL.createObjectURL(await decryptToBlob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = props.image.filename;
+    link.click();
+    if (url !== decryptedUrl.value) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch {
+    failed.value = true;
+  } finally {
+    saving.value = false;
+  }
+}
+
+watch(showImage, (show) => show && load(), { immediate: true });
+
+onBeforeUnmount(() => {
+  if (decryptedUrl.value) URL.revokeObjectURL(decryptedUrl.value);
+});
 </script>
 
 <template>
   <figure class="attachment">
-    <a v-if="showImage && !failed" :href="image.url" target="_blank" rel="noopener">
-      <img :src="image.url" :alt="image.filename" loading="lazy" @load="$emit('loaded')" @error="failed = true" />
+    <a v-if="showImage && !failed && displayUrl" :href="displayUrl" target="_blank" rel="noopener">
+      <img :src="displayUrl" :alt="image.filename" loading="lazy" @load="$emit('loaded')" @error="failed = true" />
     </a>
     <div v-else class="placeholder">
       <AppIcon name="image" :size="28" />
       <div class="meta">
         <span class="filename">{{ image.filename }}</span>
-        <span>{{ failed ? 'This image could not be displayed' : image.sizeLabel }}</span>
+        <span>{{ failed ? 'This image could not be displayed' : showImage ? 'Decrypting…' : image.sizeLabel }}</span>
       </div>
-      <button v-if="!failed" class="btn" @click="showImage = true">Load image</button>
+      <button v-if="!failed && !showImage" class="btn" @click="showImage = true">Load image</button>
     </div>
     <figcaption>
       <span class="filename">{{ image.filename }}</span>
       <span class="size">{{ image.sizeLabel }}</span>
-      <a :href="image.downloadUrl" class="download" :aria-label="`Download ${image.filename}`" title="Download">
+      <a v-if="legacy" :href="legacy.downloadUrl" class="download" :aria-label="`Download ${image.filename}`" title="Download">
         <AppIcon name="download" :size="15" />
       </a>
+      <button v-else class="download" :disabled="saving" :aria-label="`Download ${image.filename}`" title="Download" @click="save">
+        <AppIcon name="download" :size="15" />
+      </button>
     </figcaption>
   </figure>
 </template>

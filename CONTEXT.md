@@ -48,6 +48,22 @@ or `.env` contents.
 - Up to 20 people.
 - Images up to 1 GB.
 - Voice chat and creating multiple channels are core features.
+- Servers and codes are defined by hand. `INVITE_CODE` holds the codes, and `server/src/serverDefinitions.ts` lists the
+  servers in the same order, so code `[0]` is Leonas and code `[1]` is SufriTEC. Users can't create servers.
+- A code's users only see that server, unless they join another with its code under server settings.
+- Any member can rename their own server.
+- Revoking a code only blocks new use of it. People who already joined keep their access.
+- Removing a member is the way to take someone's access away. It replaces the server key, but they can rejoin with the
+  code until it's revoked and replaced.
+- The owner uses the master code, belongs to every server and sees the server tabs.
+- The owner must not be able to read DMs, or role-limited channels unless they hold the role. Don't add any bypass,
+  backdoor or key escrow for this.
+
+### Encryption
+
+- Message content, filenames and keys must only be handled unencrypted in the browser. The server stores them opaquely.
+- Check access in `services/accessService.ts`, and send socket events only to those allowed.
+- Be accurate about what's protected. [DOCUMENTATION.md](DOCUMENTATION.md#what-encryption-protects) lists the limits.
 
 ### Git
 
@@ -70,7 +86,7 @@ or `.env` contents.
 | Frontend files | `/srv/http/chatappfriends/` |
 | nginx server block | `/etc/nginx/conf.d/https-server.conf`, from `deploy/nginx-server.conf` |
 | nginx app routes | `/etc/nginx/apps/chatappfriends.conf`, from `deploy/nginx-app.conf` |
-| Databases | MariaDB (`users`, `channels`) and MongoDB (`messages`), both database and user named `chatapp` |
+| Databases | MariaDB (accounts, servers, roles, channels, keys) and MongoDB (`messages`), both database and user named `chatapp` |
 
 The server's CPU doesn't support AVX2, so it can't run mediasoup's prebuilt worker. The worker was compiled on the
 server, which took about 30 minutes, and saved outside `node_modules` so it survives reinstalls.
@@ -89,6 +105,9 @@ HOST=<tailscale-ip>
 PORT=8443
 CLIENT_ORIGIN=https://<server-hostname>
 MEDIA_LISTEN_IP=<tailscale-ip>
+MASTER_INVITE_CODE=<generated>
+INVITE_CODE=<leonas-code>,<sufritec-code>
+DATA_ENCRYPTION_KEY=<generated>
 ```
 
 `CLIENT_ORIGIN` has no path, because a browser origin never includes the `/chatappfriends/` route.
@@ -115,7 +134,7 @@ systemctl reload nginx.service
 
 Both scripts delete `node_modules` and `package-lock.json`, then install fresh ones. `deploy-server.sh` then builds
 the backend. `deploy-client.sh` builds the frontend, copies it to `/srv/http/chatappfriends/`, and updates and tests
-the nginx app config. The shared steps are in `deploy/common.sh`.
+the nginx app config. The shared steps are in `deploy/common.sh`, which runs `regenerate-packages.sh`.
 
 - **Server lockfile:** the regenerated `package-lock.json` differs from the committed one, which can block the next
   pull. If it does, run `git checkout package-lock.json` and pull again.
@@ -124,6 +143,64 @@ the nginx app config. The shared steps are in `deploy/common.sh`.
 - **mediasoup version:** it's pinned to an exact version in `server/package.json`, to match the compiled worker. To
   change it, compile the new worker using the [guide's pitfalls](NEW_PROJECT_GUIDE.md#pitfalls-on-this-server), update
   `MEDIASOUP_WORKER_BIN` in the service, and run `systemctl daemon-reload`.
+
+### Starting production fresh
+
+Use this instead of the migration below if nothing in production is worth keeping. It deletes all accounts and messages,
+and everyone signs up again, so only do it once.
+
+1. Merge to `main`, and on the server add `MASTER_INVITE_CODE`, `INVITE_CODE` and `DATA_ENCRYPTION_KEY` to `server/.env`.
+2. Run `git pull`, then `./reset-prod-db.sh`. It backs up to `/root/chatapp-backups/` first and stops the service.
+3. Run `./deploy-server.sh` and `./deploy-client.sh`.
+4. Run `systemctl start chatappdiscord.service` and `systemctl reload nginx.service`.
+5. Sign up with your `MASTER_INVITE_CODE`, then send each group its code.
+
+Normal updates to `main` only need the deploy scripts. Don't run `reset-prod-db.sh` for them.
+
+To reset the test databases used by `npm run dev`, stop it and run `./reset-test-db.sh` on your laptop, without `sudo`.
+Then clear the site's data in your browsers. It refuses to run unless `server/.env` points at `chatapp-test-env`.
+
+### Moving to the encrypted version
+
+The app refuses to start on an old database until it's migrated, and `npm run dev` on any machine with an old database
+stops the same way. The migration changes the schema and can't be undone, except by restoring a backup. Its SQL has only
+been reviewed, not run, so try it on a copy first.
+
+1. Add `MASTER_INVITE_CODE`, `INVITE_CODE` and `DATA_ENCRYPTION_KEY` to `server/.env`, generated as the
+   [README](README.md) describes. Keep a separate backup of `DATA_ENCRYPTION_KEY`, because usernames and open channels
+   can't be read without it.
+2. Back up both databases and the uploads folder, and stop the service.
+3. Try the migration on a copy of the databases by overriding `MARIADB_DATABASE` and `MONGODB_DATABASE` for that one
+   command, after building with `npm run build:server`:
+
+   ```bash
+   MARIADB_DATABASE=<copy> MONGODB_DATABASE=<copy> npm run migrate -w server
+   ```
+
+4. If that works, run `npm run migrate -w server` on the real databases, then deploy both apps.
+5. Sign in with your existing account, save the recovery key, and enter your `MASTER_INVITE_CODE` on the join page. That
+   makes you the owner, in every server. Existing channels go to the first server in the list.
+6. Send each group its code. Existing friends sign in as usual, save their recovery key and enter the code. New friends
+   sign up with it.
+
+If the database does have old messages, they stay readable and marked "Not encrypted". To permanently delete them and
+their images, run `npm run migrate -w server -- --purge-old-messages`.
+
+### Adding a server or replacing a code
+
+To add a server:
+
+1. Add a code to the end of `INVITE_CODE` in `server/.env`.
+2. Add a line to the end of the list in `server/src/serverDefinitions.ts`. Never reorder this list, because a server is
+   tied to its position.
+3. Deploy the backend and restart it. The server is created at startup, and the app won't start if the two lists have
+   different lengths.
+
+To replace a code:
+
+1. In server settings, enter the old code under **Revoke an invite code**. That adds it to the blacklist right away.
+2. Put a new code in the same position in `INVITE_CODE`, and restart the backend. Until then, nobody new can join that
+   server.
 
 ### Operations
 
@@ -143,8 +220,9 @@ systemctl status nginx.service
   systemctl reload nginx.service
   ```
 
+- **After removing someone:** they can still rejoin with the code, so replace it if they shouldn't.
 - **New members:** each friend needs access to this machine on the tailnet, either as a member or through node
-  sharing, plus the `INVITE_CODE`.
+  sharing, plus their server's code from `INVITE_CODE`.
 
 ### Adding another site on port 443
 
@@ -154,9 +232,12 @@ a signed-in user. Give anything less trusted its own hostname and `server` block
 
 ## Known issues
 
-- **The image limit is defined in three places.** To change it, update `MAX_IMAGE_BYTES` in `server/.env`, the same
+- **The image limit is defined in several places.** To change it, update `MAX_IMAGE_BYTES` in `server/.env`, the same
   constant in `client/src/utils/images.ts`, and the messages in `client/src/utils/images.ts` and
-  `server/src/middlewares/errorHandler.ts`.
+  `server/src/services/fileService.ts`. The 4 MB chunk size is also set in both `fileService.ts` and
+  `client/src/services/crypto/fileCrypto.ts`.
+- **The SQL hasn't been run.** Tests used an in-memory stand-in for the databases, so `models/*.ts` and
+  `models/migrate.ts` need a first run on a copy.
 - **No automated tests in the repository.** Run `npm run typecheck` and test changes by hand, including voice from
   two devices.
 - **Unmeasured:** 20 people in voice at once on this CPU.

@@ -5,14 +5,77 @@ export interface UserDto {
   username: string;
 }
 
-export interface ChannelDto {
-  id: number;
-  name: string;
-  type: ChannelType;
-  createdBy: number | null;
+export interface ProfileDto extends UserDto {
+  isOwner: boolean;
+  needsKeySetup: boolean;
 }
 
-export interface ImageDto {
+export interface LoginDto {
+  user: ProfileDto;
+  keys: { kdfSalt: string; wrappedPrivateKey: string; publicKey: string } | null;
+}
+
+export interface RootKeyDto {
+  version: number;
+  key: string;
+}
+
+export interface ServerDto {
+  id: number;
+  name: string;
+  rootKeyVersion: number;
+  isAdmin: boolean;
+  rootKeys: RootKeyDto[];
+}
+
+export interface MemberDto extends UserDto {
+  publicKey: string | null;
+  isOwner: boolean;
+  roleIds: number[];
+}
+
+export interface RoleDto {
+  id: number;
+  serverId: number;
+  name: string;
+  isAdmin: boolean;
+}
+
+export interface ChannelDto {
+  id: number;
+  serverId: number;
+  name: string;
+  type: ChannelType;
+  restricted: boolean;
+  keyVersion: number;
+  rotationPending: boolean;
+  createdBy: number | null;
+  roleIds: number[];
+}
+
+export interface KeyEnvelopeDto {
+  version: number;
+  userId: number;
+  wrappedKey: string;
+}
+
+export interface KeyWorkDto {
+  grants: { channelId: number; version: number; userId: number }[];
+  rotations: number[];
+}
+
+export interface DmDto {
+  id: number;
+  otherUser: UserDto & { publicKey: string | null };
+  wrappedKey: string;
+}
+
+export interface AttachmentDto {
+  id: string;
+  encryptedSize: number;
+}
+
+export interface LegacyImageDto {
   id: string;
   filename: string;
   mimeType: string;
@@ -21,10 +84,15 @@ export interface ImageDto {
 
 export interface MessageDto {
   id: string;
-  channelId: number;
+  channelId: number | null;
+  dmId: number | null;
   author: UserDto;
-  content: string;
-  image: ImageDto | null;
+  encrypted: boolean;
+  ciphertext: string | null;
+  keyVersion: number;
+  attachment: AttachmentDto | null;
+  content: string | null;
+  image: LegacyImageDto | null;
   createdAt: string;
 }
 

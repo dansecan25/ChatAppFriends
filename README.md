@@ -5,12 +5,20 @@ runs on your own server.
 
 ## Features
 
-- **Channels:** anyone can create text and voice channels, and only a channel's creator can delete it.
-- **Text chat:** live messages, message history, unread markers, and a layout that works on phones.
+- **Servers:** each invite code leads to one server, and members only see theirs. Anyone in a server can rename it, and
+  anyone with another server's code can join that one too.
+- **End-to-end encryption:** messages and images in channels and DMs are encrypted in the browser, so the database and
+  disk only hold ciphertext. See [what this does and doesn't protect](DOCUMENTATION.md#what-encryption-protects).
+- **Direct messages:** private conversations that only the two people in them can read, not even the owner.
+- **Roles:** admins create roles, and a channel can be limited to chosen roles. Its encryption key only goes to those
+  people.
 - **Voice chat:** mute, deafen and speaking indicators, with audio routed through the server.
-- **Images up to 1 GB:** upload progress and cancel. PNG, JPEG, GIF, WebP, AVIF and BMP are accepted, and images
-  over 25 MB load only when asked.
-- **Private accounts:** registering needs an invite code, and the member limit defaults to 20.
+- **Images up to 1 GB:** upload progress and cancel. PNG, JPEG, GIF, WebP, AVIF and BMP are accepted, and images over
+  25 MB load only when asked.
+- **Removing members:** admins can remove someone from a server. Its encryption key is replaced, so that person can't
+  read anything new.
+- **Owner tools:** the owner belongs to every server, switches between them from a tab bar, and can revoke invite codes.
+- **Account recovery:** a recovery key saved at signup restores access after a forgotten password.
 
 ## Run it locally
 
@@ -61,7 +69,9 @@ You need to provide these in `server/.env`:
 | Variable | What to enter |
 |---|---|
 | `JWT_SECRET` | A random secret of at least 32 characters. Generate one with `openssl rand -hex 32`. |
-| `INVITE_CODE` | The code people enter to register, at least 6 characters. |
+| `MASTER_INVITE_CODE` | The code that creates the owner account, once. Generate one with `openssl rand -hex 16`. |
+| `INVITE_CODE` | One code per server, separated by commas, in the same order as `server/src/serverDefinitions.ts`. Generate each with `openssl rand -hex 8`. |
+| `DATA_ENCRYPTION_KEY` | Encrypts usernames and server keys in the database. Generate one with `openssl rand -hex 32`, and back it up: losing it makes usernames and open channels unreadable. |
 | `MARIADB_PASSWORD` | The MariaDB password from step 3. |
 | `MONGODB_URI` | With authentication: `mongodb://chatapp:PASSWORD@127.0.0.1:27017/?authSource=chatapp`. Without it, keep the default. |
 
@@ -72,7 +82,7 @@ These already have working defaults for local use:
 | `NODE_ENV` | `development` | Leave it. The production service sets its own. |
 | `HOST`, `PORT` | `127.0.0.1`, `8443` | The API address. If you change the port, also set `VITE_API_URL` in `client/.env`. |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | The frontend address. Other origins are rejected. |
-| `MAX_USERS` | `20` | The member limit, also used as the limit per voice channel. |
+| `MAX_USERS` | `20` | The member limit per server, also used as the limit per voice channel. |
 | `MARIADB_HOST`, `MARIADB_PORT` | `127.0.0.1`, `3306` | Your database is elsewhere. |
 | `MARIADB_USER`, `MARIADB_DATABASE` | `chatapp` | You chose different names in step 3. |
 | `MONGODB_DATABASE` | `chatapp` | You chose a different name in step 3. |
@@ -90,10 +100,12 @@ The frontend needs no `.env` file. It finds the API on port 8443 of the host tha
 npm run dev
 ```
 
-Open http://localhost:5173/chatappfriends/ and create an account with your invite code.
+Open http://localhost:5173/chatappfriends/ and create the owner account with your `MASTER_INVITE_CODE`. Other people sign
+up with the code for their server. Encryption needs a secure page, so use
+`localhost` or HTTPS, not a plain `http://` LAN address.
 
-The first start creates the tables, indexes and starter channels in whichever databases `server/.env` points at.
-Check those values first if they point at a server other people use.
+The first start creates the tables and indexes in whichever databases `server/.env` points at. A database from before
+this version is refused until you migrate it, as described in [CONTEXT.md](CONTEXT.md#moving-to-the-encrypted-version).
 
 ## More documentation
 

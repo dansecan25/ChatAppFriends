@@ -7,4 +7,9 @@ export const toChannel = (dto: ChannelDto): Channel => ({
   name: dto.name,
   type: dto.type,
   createdBy: dto.createdBy,
+  serverId: dto.serverId,
+  restricted: dto.restricted,
+  keyVersion: dto.keyVersion,
+  rotationPending: dto.rotationPending,
+  roleIds: dto.roleIds,
 });

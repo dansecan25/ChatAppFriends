@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { threadKeyOf, type Thread } from '@/services/crypto/keyring';
 import { useAuthStore } from '@/stores/authStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { errorMessage } from '@/utils/errors';
@@ -9,7 +10,7 @@ const STICK_TO_BOTTOM_PX = 120;
 const LOAD_OLDER_PX = 100;
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
-const props = defineProps<{ channelId: number }>();
+const props = defineProps<{ thread: Thread }>();
 
 const auth = useAuthStore();
 const store = useMessageStore();
@@ -18,7 +19,7 @@ const scroller = ref<HTMLElement>();
 const loadingOlder = ref(false);
 const olderError = ref<string | null>(null);
 
-const state = computed(() => store.channelState(props.channelId));
+const state = computed(() => store.threadState(threadKeyOf(props.thread)));
 const messages = computed(() => state.value.messages);
 
 /** Tells whether a message continues the previous author's run. */
@@ -49,7 +50,7 @@ async function onScroll(): Promise<void> {
   olderError.value = null;
   const previousHeight = el.scrollHeight;
   try {
-    await store.loadOlder(props.channelId);
+    await store.loadOlder(props.thread);
     await nextTick();
     el.scrollTop += el.scrollHeight - previousHeight;
   } catch (err) {
@@ -90,7 +91,7 @@ onMounted(scrollToBottom);
     <p v-else-if="loadingOlder" class="note">Loading older messages…</p>
     <div v-if="state.loaded && messages.length === 0" class="empty">
       <h2>Nothing here yet</h2>
-      <p>Say hello or share an image to get this channel started.</p>
+      <p>Say hello or share an image to get things started. Only people here can read it.</p>
     </div>
     <MessageItem
       v-for="(message, index) in messages"

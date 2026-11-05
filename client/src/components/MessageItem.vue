@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Message } from '@/types/models';
+import AppIcon from './AppIcon.vue';
 import ImageAttachment from './ImageAttachment.vue';
 import UserAvatar from './UserAvatar.vue';
 
@@ -14,8 +15,11 @@ defineEmits<{ imageLoaded: [] }>();
       <header v-if="!grouped">
         <strong>{{ message.author.username }}</strong>
         <time :datetime="message.createdAt.toISOString()">{{ message.timeLabel }}</time>
+        <span v-if="message.protection === 'legacy'" class="legacy" title="Sent before encryption, so the server can read it">
+          <AppIcon name="unlock" :size="12" /> Not encrypted
+        </span>
       </header>
-      <p v-if="message.content" class="content">{{ message.content }}</p>
+      <p v-if="message.content" class="content" :class="{ locked: message.protection === 'locked' }">{{ message.content }}</p>
       <ImageAttachment v-if="message.image" :image="message.image" @loaded="$emit('imageLoaded')" />
     </div>
   </article>
@@ -53,6 +57,19 @@ header {
 time {
   color: var(--text-faint);
   font-size: 0.75rem;
+}
+
+.legacy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
+.locked {
+  color: var(--text-faint);
+  font-style: italic;
 }
 
 .content {

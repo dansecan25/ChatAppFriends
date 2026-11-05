@@ -1,20 +1,27 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import * as channelApi from '@/api/channelApi';
-import type { ChannelType } from '@/types/dto';
+import { wrapForMember } from '@/services/crypto/keyring';
+import { newSymmetricKey } from '@/services/crypto/primitives';
+import type { ChannelType, MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
+
+/** Tells whether a member may use a restricted channel. */
+export const memberHasAccess = (channel: Pick<Channel, 'roleIds' | 'createdBy'>, member: MemberDto): boolean =>
+  member.id === channel.createdBy || member.roleIds.some((roleId) => channel.roleIds.includes(roleId));
 
 export const useChannelStore = defineStore('channels', () => {
   const channels = ref<Channel[]>([]);
   const loaded = ref(false);
-  const unread = ref(new Set<number>());
+  /** Thread keys with unseen messages, covering channels and DMs. */
+  const unread = ref(new Set<string>());
 
   const textChannels = computed(() => channels.value.filter((channel) => channel.type === 'text'));
   const voiceChannels = computed(() => channels.value.filter((channel) => channel.type === 'voice'));
 
-  /** Loads the channel list. */
-  async function fetchChannels(): Promise<void> {
-    channels.value = await channelApi.fetchChannels();
+  /** Loads a server's channels. */
+  async function fetchChannels(serverId: number): Promise<void> {
+    channels.value = await channelApi.fetchChannels(serverId);
     loaded.value = true;
   }
 
@@ -26,12 +33,25 @@ export const useChannelStore = defineStore('channels', () => {
   /** Removes a channel from the list. */
   function removeChannel(id: number): void {
     channels.value = channels.value.filter((channel) => channel.id !== id);
-    unread.value.delete(id);
+    unread.value.delete(`c${id}`);
   }
 
-  /** Creates a channel on the server. */
-  async function createChannel(name: string, type: ChannelType): Promise<Channel> {
-    const channel = await channelApi.createChannel(name, type);
+  /** Creates a channel. A restricted text channel gets a key only its allowed members can open. */
+  async function createChannel(
+    serverId: number,
+    name: string,
+    type: ChannelType,
+    roleIds: number[],
+    members: MemberDto[],
+    userId: number,
+  ): Promise<Channel> {
+    const encrypted = roleIds.length > 0 && type === 'text';
+    const raw = newSymmetricKey();
+    const audience = encrypted ? members.filter((member) => memberHasAccess({ roleIds, createdBy: userId }, member)) : [];
+    const envelopes = await Promise.all(
+      audience.map(async (member) => ({ version: 0, userId: member.id, wrappedKey: await wrapForMember(raw, member) })),
+    );
+    const channel = await channelApi.createChannel(serverId, { name, type, roleIds, envelopes });
     addChannel(channel);
     return channel;
   }
@@ -42,14 +62,21 @@ export const useChannelStore = defineStore('channels', () => {
     removeChannel(id);
   }
 
-  /** Flags a channel as having unseen messages. */
-  function markUnread(id: number): void {
-    unread.value.add(id);
+  /** Flags a thread as having unseen messages. */
+  function markUnread(threadKey: string): void {
+    unread.value.add(threadKey);
   }
 
-  /** Clears a channel's unread flag. */
-  function markRead(id: number): void {
-    unread.value.delete(id);
+  /** Clears a thread's unread flag. */
+  function markRead(threadKey: string): void {
+    unread.value.delete(threadKey);
+  }
+
+  /** Clears everything on sign-out. */
+  function reset(): void {
+    channels.value = [];
+    loaded.value = false;
+    unread.value = new Set();
   }
 
   return {
@@ -65,5 +92,6 @@ export const useChannelStore = defineStore('channels', () => {
     deleteChannel,
     markUnread,
     markRead,
+    reset,
   };
 });

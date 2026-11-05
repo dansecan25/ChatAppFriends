@@ -1,8 +1,9 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { currentUser } from '../middlewares/auth.js';
+import type { MessageScope } from '../models/messageModel.js';
 import * as messageService from '../services/messageService.js';
-import { channelIdSchema } from './channelController.js';
+import { idSchema } from './schemas.js';
 
 const pageSchema = z.object({
   before: z.string().regex(/^[a-f\d]{24}$/i).optional(),
@@ -10,18 +11,22 @@ const pageSchema = z.object({
 });
 
 const postSchema = z.object({
-  content: z.string().trim().min(1, 'Message is empty').max(4000, 'Messages can have up to 4000 characters'),
+  ciphertext: z.string().min(1).max(32_768),
+  keyVersion: z.number().int().min(0),
+  uploadId: z.uuid().optional(),
 });
 
-/** GET /channels/:channelId/messages */
+/** Reads a route's message location from its parameters. */
+export const scopeOf = (req: Request): MessageScope =>
+  req.params.dmId ? { dmId: idSchema.parse(req.params.dmId) } : { channelId: idSchema.parse(req.params.channelId) };
+
+/** GET /channels/:channelId/messages and /dms/:dmId/messages */
 export async function list(req: Request, res: Response): Promise<void> {
   const { before, limit } = pageSchema.parse(req.query);
-  res.json(await messageService.getMessages(channelIdSchema.parse(req.params.channelId), limit, before));
+  res.json(await messageService.getMessages(scopeOf(req), currentUser(req).id, limit, before));
 }
 
-/** POST /channels/:channelId/messages */
+/** POST /channels/:channelId/messages and /dms/:dmId/messages */
 export async function create(req: Request, res: Response): Promise<void> {
-  const { content } = postSchema.parse(req.body);
-  const channelId = channelIdSchema.parse(req.params.channelId);
-  res.status(201).json(await messageService.postMessage(channelId, currentUser(req), content));
+  res.status(201).json(await messageService.postMessage(scopeOf(req), currentUser(req), postSchema.parse(req.body)));
 }

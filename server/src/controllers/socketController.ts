@@ -3,6 +3,8 @@ import type { types } from 'mediasoup';
 import { z } from 'zod';
 import { requireSocketAuth } from '../middlewares/auth.js';
 import type { AuthUser } from '../models/userModel.js';
+import { listServersForUser } from '../models/serverModel.js';
+import { serverRoom, userRoom } from '../services/realtimeService.js';
 import * as voiceService from '../services/voiceService.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -36,7 +38,12 @@ function handle<T>(socket: Socket, event: string, schema: z.ZodType<T>, handler:
 function onConnection(socket: Socket): void {
   const user = socket.data.user as AuthUser;
 
-  socket.emit('voice:rosters', voiceService.getVoiceRosters());
+  void socket.join(userRoom(user.id));
+  void listServersForUser(user.id)
+    .then((servers) => socket.join(servers.map((server) => serverRoom(server.id))))
+    .then(() => voiceService.getVoiceRosters(user.id))
+    .then((rosters) => socket.emit('voice:rosters', rosters))
+    .catch((err) => console.error('Could not set up a socket:', err));
 
   handle(socket, 'voice:join', joinSchema, ({ channelId }) => voiceService.joinVoice(socket.id, user, channelId));
   handle(socket, 'voice:createTransport', transportSchema, ({ direction }) =>

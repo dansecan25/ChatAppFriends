@@ -9,8 +9,8 @@ import { closeMongodb, connectMongodb } from './connections/mongodb.js';
 import { createSocketServer } from './connections/socket.js';
 import { registerSocketHandlers } from './controllers/socketController.js';
 import { ensureSchema } from './models/schema.js';
-import { seedDefaultChannels } from './services/channelService.js';
-import { ensureUploadDirectory } from './services/imageService.js';
+import { initializeFileStorage } from './services/fileService.js';
+import { syncDefinedServers } from './services/serverService.js';
 import { startSpeakerDetection } from './services/voiceService.js';
 
 const UPLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -31,8 +31,8 @@ async function main(): Promise<void> {
   await connectMariadb();
   await connectMongodb();
   await ensureSchema();
-  await seedDefaultChannels();
-  await ensureUploadDirectory();
+  await syncDefinedServers();
+  await initializeFileStorage();
   await connectMediasoup();
 
   const server = createServer(createApp());
