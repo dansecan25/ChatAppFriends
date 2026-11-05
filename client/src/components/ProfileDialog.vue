@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import * as profileApi from '@/api/profileApi';
 import { useAuthStore } from '@/stores/authStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { useServerStore } from '@/stores/serverStore';
 import { errorMessage } from '@/utils/errors';
 import { toAvatarBlob } from '@/utils/images';
@@ -13,6 +14,7 @@ const emit = defineEmits<{ close: [] }>();
 
 const auth = useAuthStore();
 const servers = useServerStore();
+const notifications = useNotificationStore();
 
 const dialog = ref<HTMLDialogElement>();
 const fileInput = ref<HTMLInputElement>();
@@ -82,6 +84,23 @@ onMounted(() => dialog.value?.showModal());
         <div class="modal-actions"><button class="btn">Save nickname</button></div>
       </form>
 
+      <section class="notifications">
+        <strong>Notifications</strong>
+        <template v-if="notifications.permission === 'unsupported'">
+          <p class="hint">This browser can't show notifications from a tab.</p>
+        </template>
+        <template v-else-if="notifications.permission === 'denied'">
+          <p class="hint">Your browser is blocking them. Allow notifications for this site in its settings, then reload.</p>
+        </template>
+        <template v-else>
+          <p class="hint">For DMs, mentions and new messages while a tab is open, on this browser. Message text shows in them, so it can appear on a lock screen.</p>
+          <div class="modal-actions">
+            <button v-if="notifications.active" class="btn" @click="notifications.disable">Turn off</button>
+            <button v-else class="btn" @click="notifications.enable">Turn on</button>
+          </div>
+        </template>
+      </section>
+
       <p v-if="notice" class="hint" role="status">{{ notice }}</p>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
       <div class="modal-actions"><button class="btn" @click="emit('close')">Close</button></div>
@@ -90,6 +109,12 @@ onMounted(() => dialog.value?.showModal());
 </template>
 
 <style scoped>
+.notifications {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .picture {
   display: flex;
   align-items: center;

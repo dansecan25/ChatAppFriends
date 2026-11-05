@@ -7,6 +7,7 @@ import { useDmStore } from '@/stores/dmStore';
 import { useMessageStore } from '@/stores/messageStore';
 import { useServerStore } from '@/stores/serverStore';
 import { useVoiceStore } from '@/stores/voiceStore';
+import { closeNotifications } from '@/services/notifications';
 import type { ChannelType, MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
@@ -92,6 +93,7 @@ async function removeChannel(channel: Channel): Promise<void> {
 async function logout(): Promise<void> {
   await voice.leave();
   await auth.logout();
+  await closeNotifications();
   [servers, channels, dms, messages].forEach((store) => store.reset());
   await router.push({ name: 'login' });
 }

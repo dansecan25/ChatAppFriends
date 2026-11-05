@@ -1,6 +1,10 @@
 import { useAuthStore } from '@/stores/authStore';
 import { useDmStore } from '@/stores/dmStore';
 import { useServerStore } from '@/stores/serverStore';
+import type { MemberDto } from '@/types/dto';
+
+/** A nickname if they set one in this server, otherwise their account name. */
+export const displayName = (member: MemberDto): string => member.nickname ?? member.username;
 
 /** Works out how to show someone: their nickname in the server on screen, or their account name elsewhere. */
 export function useUserDisplay() {

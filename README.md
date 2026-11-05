@@ -12,6 +12,9 @@ runs on your own server.
 - **Direct messages:** private conversations that only the two people in them can read, not even the owner.
 - **Roles:** admins create roles, and a channel can be limited to chosen roles. Its encryption key only goes to those
   people.
+- **Mentions:** type `@` for people and `#` for channels, with suggestions as you type. Mentions of you are highlighted.
+- **Notifications:** browser notifications for DMs, mentions and new messages while a tab is open. Each channel can be
+  muted, which still lets mentions of you through.
 - **Member list:** each channel shows who can use it, with a green bubble for those online.
 - **Profiles:** everyone can set a profile picture, and a nickname for each server. Account names can't change.
 - **Voice chat:** mute, deafen and speaking indicators, with audio routed through the server.

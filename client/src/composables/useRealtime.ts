@@ -7,6 +7,7 @@ import { socket } from '@/services/socketClient';
 import { useChannelStore } from '@/stores/channelStore';
 import { useDmStore } from '@/stores/dmStore';
 import { useMessageStore } from '@/stores/messageStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { useServerStore } from '@/stores/serverStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 import type { ChannelDto, MessageDto } from '@/types/dto';
@@ -19,6 +20,7 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
   const dms = useDmStore();
   const messages = useMessageStore();
   const voice = useVoiceStore();
+  const notifications = useNotificationStore();
   const connected = ref(socket.connected);
   let hasConnectedBefore = false;
 
@@ -48,21 +50,24 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     voice.handleForcedLeave('Connection lost. Rejoin the voice channel when you are back online.');
   };
 
-  /** Works out which thread a new message belongs to. Other servers' channels only get an unread mark. */
-  const threadOf = (dto: MessageDto): Thread | null => {
+  /** Works out which thread a new message belongs to, in whichever server it was sent. */
+  const threadOf = async (dto: MessageDto): Promise<Thread | null> => {
     if (dto.dmId !== null) return { kind: 'dm', id: dto.dmId };
-    const channel = channels.channels.find((candidate) => candidate.id === dto.channelId);
+    const channel = await channels.locate(dto.channelId as number, servers.servers.map((server) => server.id));
     return channel ? { kind: 'channel', id: channel.id, serverId: channel.serverId, restricted: channel.restricted } : null;
   };
   const onMessage = async (dto: MessageDto) => {
-    const thread = threadOf(dto);
+    const thread = await threadOf(dto);
     if (!thread) return;
-    await messages.receive(dto, thread);
+    const message = await messages.receive(dto, thread);
     const key = threadKeyOf(thread);
-    if (!activeThread.value || key !== threadKeyOf(activeThread.value) || document.hidden) channels.markUnread(key);
+    const onScreen = !!activeThread.value && key === threadKeyOf(activeThread.value) && !document.hidden;
+    if (!onScreen) channels.markUnread(key);
+    notifications.notifyOf(message, thread, onScreen && document.hasFocus());
   };
   const onChannelCreated = (dto: ChannelDto) => {
     if (dto.serverId === servers.activeId) channels.addChannel(toChannel(dto));
+    else channels.remember(toChannel(dto));
   };
   const onChannelDeleted = ({ id }: { id: number }) => {
     channels.removeChannel(id);

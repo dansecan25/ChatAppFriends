@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { memberHasAccess } from '@/stores/channelStore';
+import { displayName as nameOf } from '@/composables/useUserDisplay';
+import { membersOf } from '@/stores/channelStore';
 import { useServerStore } from '@/stores/serverStore';
-import type { MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
 import UserAvatar from './UserAvatar.vue';
 
@@ -10,14 +10,8 @@ const props = defineProps<{ channel: Channel }>();
 
 const servers = useServerStore();
 
-/** A nickname if they set one here, otherwise their account name. */
-const nameOf = (member: MemberDto) => member.nickname ?? member.username;
-
-/** A restricted channel only lists those allowed in it. */
 const allowed = computed(() =>
-  servers.members
-    .filter((member) => !props.channel.restricted || memberHasAccess(props.channel, member))
-    .toSorted((a, b) => nameOf(a).localeCompare(nameOf(b))),
+  membersOf(props.channel, servers.members).toSorted((a, b) => nameOf(a).localeCompare(nameOf(b))),
 );
 const groups = computed(() => [
   { label: 'Online', people: allowed.value.filter((member) => member.online) },

@@ -6,13 +6,18 @@ import ChannelSidebar from '@/components/ChannelSidebar.vue';
 import MessageComposer from '@/components/MessageComposer.vue';
 import MemberList from '@/components/MemberList.vue';
 import MessageList from '@/components/MessageList.vue';
+import NotificationPrompt from '@/components/NotificationPrompt.vue';
+import { useNotificationOpens } from '@/composables/useNotificationOpens';
 import { useRealtime } from '@/composables/useRealtime';
 import { requireIdentity } from '@/services/crypto/identity';
 import { threadKeyOf, type Thread } from '@/services/crypto/keyring';
 import { safetyNumber } from '@/services/crypto/primitives';
+import { closeNotifications } from '@/services/notifications';
+import { useAuthStore } from '@/stores/authStore';
 import { useChannelStore } from '@/stores/channelStore';
 import { useDmStore } from '@/stores/dmStore';
 import { useMessageStore } from '@/stores/messageStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { useServerStore } from '@/stores/serverStore';
 import { errorMessage } from '@/utils/errors';
 
@@ -22,6 +27,10 @@ const servers = useServerStore();
 const channels = useChannelStore();
 const dms = useDmStore();
 const messages = useMessageStore();
+const notifications = useNotificationStore();
+
+notifications.load((useAuthStore().user as { id: number }).id);
+useNotificationOpens();
 
 const sidebarOpen = ref(false);
 const membersOpen = ref(false);
@@ -62,9 +71,15 @@ function redirectToValidThread(): void {
   void router.replace(first ? { name: 'chat', params: { channelId: first.id } } : { name: 'chat' });
 }
 
+/** Clears a thread's unread mark and its notifications. */
+function markThreadRead(key: string): void {
+  channels.markRead(key);
+  void closeNotifications(key);
+}
+
 /** Marks the visible thread as read when the tab regains focus. */
 function onVisibilityChange(): void {
-  if (!document.hidden && threadKey.value) channels.markRead(threadKey.value);
+  if (!document.hidden && threadKey.value) markThreadRead(threadKey.value);
 }
 
 /** Loads the active server's channels and people. */
@@ -84,7 +99,7 @@ watch(threadKey, async () => {
   closeDrawers();
   const thread = activeThread.value;
   if (!thread || !threadKey.value) return;
-  channels.markRead(threadKey.value);
+  markThreadRead(threadKey.value);
   loadError.value = null;
   try {
     await messages.loadLatest(thread);
@@ -94,7 +109,7 @@ watch(threadKey, async () => {
 }, { flush: 'post' });
 
 watch(() => servers.activeId, async () => {
-  if (route.name !== 'dm') await router.replace({ name: 'chat' });
+  if (route.name !== 'dm' && activeChannel.value?.serverId !== servers.activeId) await router.replace({ name: 'chat' });
   await loadServer();
 });
 
@@ -137,10 +152,25 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
           </span>
         </template>
         <span v-if="!connected" class="offline" role="status">Reconnecting…</span>
-        <button v-if="activeChannel" class="icon-btn members-toggle" aria-label="Show members" @click="membersOpen = !membersOpen">
-          <AppIcon name="users" />
-        </button>
+        <div v-if="activeChannel" class="actions">
+          <button
+            v-if="notifications.active"
+            class="icon-btn"
+            :class="{ muted: notifications.isMuted(activeChannel.id) }"
+            :aria-pressed="notifications.isMuted(activeChannel.id)"
+            aria-label="Mute this channel"
+            :title="notifications.isMuted(activeChannel.id) ? 'Muted. You only get mentions from this channel.' : 'Mute this channel'"
+            @click="notifications.toggleMute(activeChannel.id)"
+          >
+            <AppIcon :name="notifications.isMuted(activeChannel.id) ? 'bellOff' : 'bell'" />
+          </button>
+          <button class="icon-btn members-toggle" aria-label="Show members" @click="membersOpen = !membersOpen">
+            <AppIcon name="users" />
+          </button>
+        </div>
       </header>
+
+      <NotificationPrompt />
 
       <p v-if="loadError" class="form-error banner" role="alert">{{ loadError }}</p>
 
@@ -216,6 +246,17 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
   color: var(--text-faint);
 }
 
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.muted {
+  color: var(--text-faint);
+}
+
 .menu,
 .members-toggle,
 .scrim {
@@ -230,7 +271,6 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
 @media (max-width: 1000px) {
   .members-toggle {
     display: inline-flex;
-    margin-left: auto;
   }
 
   .members {

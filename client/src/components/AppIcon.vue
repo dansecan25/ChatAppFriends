@@ -21,6 +21,8 @@ const paths = {
   unlock: 'M6 11h12v9H6zM9 11V8a3 3 0 0 1 5.6-1.5',
   settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4h4V5zM6 15v4h4v-4z',
   dm: 'M4 5h16v11H9l-5 4z',
+  bell: 'M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4',
+  bellOff: 'M3 3l18 18M8 6.5A6 6 0 0 1 18 11v4M6 11v6l-1.5 2H17M10 21h4',
   users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14.5c1.8.8 3 2.8 3 5.5',
 } as const;
 

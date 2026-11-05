@@ -76,15 +76,18 @@ Data travels `api → mappers → stores → views and components`.
 |---|---|
 | `api/` | HTTP calls. `http.ts` is the shared request function. |
 | `mappers/` | Convert API data (`types/dto.ts`) into display models (`types/models.ts`) |
-| `services/` | `socketClient`, `voiceClient` (WebRTC), `keySharing` (shares and replaces channel keys) |
+| `services/` | `socketClient`, `voiceClient` (WebRTC), `keySharing` (shares and replaces channel keys), `notifications` (browser notifications) |
 | `services/crypto/` | `primitives` (WebCrypto wrappers), `identity` (account keys on this device), `keyring` (server, channel and DM keys), `messageCrypto`, `fileCrypto` |
-| `stores/` | Pinia state: `authStore`, `serverStore`, `channelStore`, `dmStore`, `messageStore`, `voiceStore` |
-| `composables/` | `useRealtime` (socket events into stores), `useImageUploads` (upload progress and cancel) |
+| `stores/` | Pinia state: `authStore`, `serverStore`, `channelStore`, `dmStore`, `messageStore`, `voiceStore`, `notificationStore` |
+| `composables/` | `useRealtime` (socket events into stores), `useImageUploads` (upload progress and cancel), `useMentionPicker` (`@` and `#` suggestions), `useNotificationOpens` (going to a clicked notification's message) |
 | `router/` | Routes and the login guard |
 | `views/` | The pages: `LoginView`, `RecoverView`, `JoinView`, `ChatView` |
 | `components/` | The pieces those pages are built from |
-| `utils/` | Helpers: `env`, `format`, `avatar`, `errors`, `images` |
+| `utils/` | Helpers: `env`, `format`, `avatar`, `errors`, `images`, `mentions` |
 | `styles/main.css` | Global styles |
+
+`client/public/sw.js` is a service worker that only handles clicks on notifications. It has no fetch handler, so it never
+sees or caches app traffic.
 
 ## Pages
 
@@ -131,12 +134,13 @@ the first text channel. It connects the socket while open.
 | `CreateChannelDialog` | Creates a channel, optionally limited to roles | `POST /api/servers/:id/channels` |
 | `VoiceControls` | Shows the voice connection, with mute, deafen and leave | `voice:setState`, `voice:leave` |
 | `MemberList` | Lists who can use the open channel, split into online and offline. Hidden in DMs, and behind a button on small screens. | `GET /api/servers/:id/members`, `presence:changed` |
-| `MessageList`, `MessageItem` | Show messages and load older ones. Old unencrypted messages are marked. | `GET .../messages?before=<id>` |
+| `MessageList`, `MessageItem` | Show messages and load older ones. Old unencrypted messages are marked, and mentions of you are highlighted. | `GET .../messages?before=<id>` |
 | `ImageAttachment` | Downloads and decrypts an image, with a load button over 25 MB | `GET /api/attachments/:id`, or `GET /api/images/:id` for old images |
-| `MessageComposer` | Encrypts and sends text and images | `POST .../messages`, `POST .../uploads`, `PUT /api/uploads/:id/chunks/:index`, `DELETE /api/uploads/:id` |
+| `MessageComposer` | Encrypts and sends text and images, suggesting people and channels for `@` and `#` | `POST .../messages`, `POST .../uploads`, `PUT /api/uploads/:id/chunks/:index`, `DELETE /api/uploads/:id` |
 | `keySharing` | Shares restricted channel keys with newly allowed members, and replaces them after someone loses access | `GET /api/servers/:id/key-work`, `POST /api/channels/:id/keys`, `POST /api/channels/:id/rotate` |
 | `voiceClient` (via `voiceStore`) | Runs the WebRTC voice session | All other `voice:*` events; see [Voice connection](#voice-connection) |
-| `ProfileDialog` | Sets the profile picture and this server's nickname | `PUT` and `DELETE /api/users/me/avatar`, `PUT /api/servers/:id/nickname` |
+| `ProfileDialog` | Sets the profile picture and this server's nickname, and turns notifications on or off | `PUT` and `DELETE /api/users/me/avatar`, `PUT /api/servers/:id/nickname` |
+| `NotificationPrompt`, `notificationStore` | Offers to turn notifications on, keeps each browser's choices and channel mutes, and decides what notifies | `message:new` |
 | `UserAvatar` | Shows a profile picture, or initials without one | `GET /api/avatars/:id` |
 | `AppIcon`, `RecoveryKeyDialog` | Display only | None |
 
@@ -271,6 +275,25 @@ role-limited channels are end-to-end encrypted. Open channels are encrypted too,
   in a DM lets two people confirm no keys were swapped.
 - **Old messages:** those from before encryption stay readable and are marked "Not encrypted" until they're purged.
 
+### Mentions and notifications
+
+The server can't read messages, so mentions and notifications are handled entirely in each browser after decrypting.
+Mentions travel inside the encrypted text as `<@userId|name>` and `<#channelId>`. Channels carry no name, so someone who
+can't see a restricted channel only sees `#private-channel`.
+
+A notification appears unless you sent the message, or you're looking at that thread with the window focused:
+
+| Message | Notifies when |
+|---|---|
+| DM | Always |
+| Mentions you with `@` | Always, even if the channel is muted |
+| Mentions a `#channel` | You can see that channel and haven't muted it, even if the channel it was sent in is muted |
+| Anything else in a channel | The channel isn't muted |
+
+Permissions, on/off and mutes are stored per browser, in `localStorage`. Notifications need an open tab with a live socket:
+there's no push service, because it would need a server able to read or relay message content. Phones usually suspend
+background tabs, and iPhones don't offer notifications to browser tabs at all.
+
 ### What encryption protects
 
 **Protected from anyone reading the database or disk, including the owner:** DMs, and role-limited channels they don't
@@ -286,6 +309,8 @@ owner belongs to every server and can read those anyway.
   person running the server not to change the code.
 - **Voice:** it's encrypted on the way to the server, but the server could technically listen.
 - **Profile pictures:** they aren't end-to-end encrypted, so they're readable on the server's disk.
+- **Notifications:** they show the decrypted text through the browser and operating system, so it can appear on a lock
+  screen.
 - **Metadata:** who sent what and when, who talks to whom, sizes, and server, channel and role names.
 - **Usernames, from the server's operator:** they're encrypted with `DATA_ENCRYPTION_KEY`, which protects against a stolen
   database, but that key is on the server.

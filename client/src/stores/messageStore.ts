@@ -53,7 +53,11 @@ export const useMessageStore = defineStore('messages', () => {
   }
 
   /** Decrypts a message from the server and adds it. */
-  const receive = async (dto: MessageDto, thread: Thread): Promise<void> => addMessage(await toMessage(dto, thread));
+  async function receive(dto: MessageDto, thread: Thread): Promise<Message> {
+    const message = await toMessage(dto, thread);
+    addMessage(message);
+    return message;
+  }
 
   /** Encrypts and sends a message. If the channel's key just changed, gets the new key and tries once more. */
   async function send(

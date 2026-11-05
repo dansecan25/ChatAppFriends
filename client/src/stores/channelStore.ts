@@ -10,11 +10,17 @@ import type { Channel } from '@/types/models';
 export const memberHasAccess = (channel: Pick<Channel, 'roleIds' | 'createdBy'>, member: MemberDto): boolean =>
   member.id === channel.createdBy || member.roleIds.some((roleId) => channel.roleIds.includes(roleId));
 
+/** Lists those who can use a channel: everyone, unless it's restricted. */
+export const membersOf = (channel: Channel, members: MemberDto[]): MemberDto[] =>
+  channel.restricted ? members.filter((member) => memberHasAccess(channel, member)) : members;
+
 export const useChannelStore = defineStore('channels', () => {
   const channels = ref<Channel[]>([]);
   const loaded = ref(false);
   /** Thread keys with unseen messages, covering channels and DMs. */
   const unread = ref(new Set<string>());
+  /** Channels of every server, since messages also arrive from servers not on screen. */
+  const directory = ref(new Map<number, Channel>());
 
   const textChannels = computed(() => channels.value.filter((channel) => channel.type === 'text'));
   const voiceChannels = computed(() => channels.value.filter((channel) => channel.type === 'voice'));
@@ -25,6 +31,24 @@ export const useChannelStore = defineStore('channels', () => {
     loaded.value = true;
   }
 
+  /** Finds a channel this user can see, among those already loaded. */
+  const findKnown = (id: number): Channel | undefined =>
+    channels.value.find((channel) => channel.id === id) ?? directory.value.get(id);
+
+  /** Finds a channel in any of the given servers, loading them if it isn't known yet. */
+  async function locate(id: number, serverIds: number[]): Promise<Channel | undefined> {
+    if (!findKnown(id)) {
+      const lists = await Promise.all(serverIds.map((serverId) => channelApi.fetchChannels(serverId)));
+      directory.value = new Map(lists.flat().map((channel) => [channel.id, channel]));
+    }
+    return findKnown(id);
+  }
+
+  /** Remembers a channel created in a server that isn't on screen. */
+  function remember(channel: Channel): void {
+    directory.value.set(channel.id, channel);
+  }
+
   /** Adds a channel unless it is already known. */
   function addChannel(channel: Channel): void {
     if (!channels.value.some((existing) => existing.id === channel.id)) channels.value.push(channel);
@@ -33,6 +57,7 @@ export const useChannelStore = defineStore('channels', () => {
   /** Removes a channel from the list. */
   function removeChannel(id: number): void {
     channels.value = channels.value.filter((channel) => channel.id !== id);
+    directory.value.delete(id);
     unread.value.delete(`c${id}`);
   }
 
@@ -77,6 +102,7 @@ export const useChannelStore = defineStore('channels', () => {
     channels.value = [];
     loaded.value = false;
     unread.value = new Set();
+    directory.value = new Map();
   }
 
   return {
@@ -86,6 +112,9 @@ export const useChannelStore = defineStore('channels', () => {
     textChannels,
     voiceChannels,
     fetchChannels,
+    findKnown,
+    locate,
+    remember,
     addChannel,
     removeChannel,
     createChannel,
