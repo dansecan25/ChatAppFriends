@@ -28,6 +28,12 @@ const membersOpen = ref(false);
 const loadError = ref<string | null>(null);
 const safety = ref<string | null>(null);
 
+/** Closes whichever drawer is open on a small screen. */
+function closeDrawers(): void {
+  sidebarOpen.value = false;
+  membersOpen.value = false;
+}
+
 const activeDm = computed(() =>
   route.name === 'dm' ? (dms.dms.find((dm) => dm.id === Number(route.params.dmId)) ?? null) : null,
 );
@@ -75,7 +81,7 @@ async function loadServer(): Promise<void> {
 
 watch(threadKey, async () => {
   redirectToValidThread();
-  sidebarOpen.value = false;
+  closeDrawers();
   const thread = activeThread.value;
   if (!thread || !threadKey.value) return;
   channels.markRead(threadKey.value);
@@ -111,7 +117,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
 
 <template>
   <div class="layout">
-    <div v-if="sidebarOpen" class="scrim" @click="sidebarOpen = false" />
+    <div v-if="sidebarOpen || membersOpen" class="scrim" @click="closeDrawers" />
     <ChannelSidebar class="sidebar" :class="{ open: sidebarOpen }" @navigate="sidebarOpen = false" />
 
     <main class="main">
@@ -211,7 +217,8 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
 }
 
 .menu,
-.members-toggle {
+.members-toggle,
+.scrim {
   display: none;
 }
 
@@ -236,6 +243,14 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
     inset: 0 0 0 auto;
     z-index: 20;
     width: min(260px, 85vw);
+  }
+
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: rgb(0 0 0 / 55%);
   }
 }
 
@@ -265,10 +280,6 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
   color: var(--text);
 }
 
-.scrim {
-  display: none;
-}
-
 @media (max-width: 760px) {
   .menu {
     display: inline-flex;
@@ -286,14 +297,6 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibil
 
   .sidebar.open {
     transform: none;
-  }
-
-  .scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 10;
-    background: rgb(0 0 0 / 55%);
   }
 }
 </style>
