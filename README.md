@@ -1,137 +1,102 @@
 # ChatAppFriends
 
-Self-hosted voice, text and image chat for up to 20 friends, reachable over Tailscale.
+A self-hosted voice, text and image chat for a small group of friends. Think of a small private Discord that
+runs on your own server.
 
-- **Frontend:** Vue 3, TypeScript, Pinia, served by nginx on port 443 at `/chatappfriends/`
-- **Backend:** Node.js, TypeScript, Express, Socket.IO, served over HTTPS on port 8443
-- **Voice:** WebRTC through a mediasoup SFU, on port 40000 (UDP, with TCP as a fallback)
-- **Data:** MariaDB for users and channels, MongoDB for messages, the disk for images
+## Features
 
-## Project layout
+- **Channels:** anyone can create text and voice channels, and only a channel's creator can delete it.
+- **Text chat:** live messages, message history, unread markers, and a layout that works on phones.
+- **Voice chat:** mute, deafen and speaking indicators, with audio routed through the server.
+- **Images up to 1 GB:** upload progress and cancel. PNG, JPEG, GIF, WebP, AVIF and BMP are accepted, and images
+  over 25 MB load only when asked.
+- **Private accounts:** registering needs an invite code, and the member limit defaults to 20.
 
-```
-server/src/
-  connections/   MariaDB, MongoDB, mediasoup and Socket.IO setup
-  models/        Database access and schema
-  services/      Business logic
-  controllers/   HTTP and socket request handling
-  routes/        URL definitions
-  middlewares/   Auth, origin guard, uploads, errors
-  utils/         Small shared helpers
-client/src/
-  api/           HTTP calls
-  services/      Socket client and voice (WebRTC) client
-  stores/        Pinia state
-  mappers/       API data to display models
-  composables/   Reusable component logic
-  components/    UI pieces
-  views/         Screens
-  utils/, types/ Helpers and type definitions
-deploy/          nginx, systemd and environment templates
-deploy.sh        Builds and installs on the server
-```
+## Run it locally
 
-## Local development
+### 1. Install the requirements
 
-Requires Node.js 22 or newer, plus MariaDB and MongoDB. To use the server's databases instead of installing
-them locally, open a tunnel first:
+- Node.js 22 or newer
+- MariaDB and MongoDB, either local or reachable over the network
 
-```bash
-ssh -N -L 3306:127.0.0.1:3306 -L 27017:127.0.0.1:27017 <your-server>
-```
+### 2. Install the dependencies
 
 ```bash
 npm install
-cp server/.env.example server/.env   # then fill in the secrets and database credentials
+```
+
+The voice engine (mediasoup) ships a prebuilt binary that needs an AVX2 CPU. On older CPUs, `npm install` compiles
+it instead, which needs Python with pip and a C++ toolchain and can take a long time.
+
+### 3. Create the database users
+
+Choose your own passwords.
+
+MariaDB:
+
+```bash
+sudo mariadb -e "CREATE DATABASE chatapp CHARACTER SET utf8mb4;
+  CREATE USER 'chatapp'@'localhost' IDENTIFIED BY 'choose-a-password';
+  CREATE USER 'chatapp'@'127.0.0.1' IDENTIFIED BY 'choose-a-password';
+  GRANT ALL ON chatapp.* TO 'chatapp'@'localhost';
+  GRANT ALL ON chatapp.* TO 'chatapp'@'127.0.0.1';"
+```
+
+MongoDB, only if authentication is enabled:
+
+```bash
+mongosh --eval "db.getSiblingDB('chatapp').createUser({
+  user: 'chatapp', pwd: 'choose-a-password', roles: [{ role: 'readWrite', db: 'chatapp' }]
+})"
+```
+
+### 4. Fill in the environment values
+
+```bash
+cp server/.env.example server/.env
+```
+
+You need to provide these in `server/.env`:
+
+| Variable | What to enter |
+|---|---|
+| `JWT_SECRET` | A random secret of at least 32 characters. Generate one with `openssl rand -hex 32`. |
+| `INVITE_CODE` | The code people enter to register, at least 6 characters. |
+| `MARIADB_PASSWORD` | The MariaDB password from step 3. |
+| `MONGODB_URI` | With authentication: `mongodb://chatapp:PASSWORD@127.0.0.1:27017/?authSource=chatapp`. Without it, keep the default. |
+
+These already have working defaults for local use:
+
+| Variable | Default | When to change it |
+|---|---|---|
+| `NODE_ENV` | `development` | Leave it. The production service sets its own. |
+| `HOST`, `PORT` | `127.0.0.1`, `8443` | The API address. If you change the port, also set `VITE_API_URL` in `client/.env`. |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | The frontend address. Other origins are rejected. |
+| `MAX_USERS` | `20` | The member limit, also used as the limit per voice channel. |
+| `MARIADB_HOST`, `MARIADB_PORT` | `127.0.0.1`, `3306` | Your database is elsewhere. |
+| `MARIADB_USER`, `MARIADB_DATABASE` | `chatapp` | You chose different names in step 3. |
+| `MONGODB_DATABASE` | `chatapp` | You chose a different name in step 3. |
+| `UPLOAD_DIR` | `./uploads` | You want images stored elsewhere. |
+| `MAX_IMAGE_BYTES` | `1073741824` (1 GB) | See the image limit note in [CONTEXT.md](CONTEXT.md#known-issues). |
+| `MEDIA_LISTEN_IP` | `127.0.0.1` | You test voice in Firefox or from another device. Use your LAN or Tailscale IP. |
+| `MEDIA_PORT` | `40000` | The port is taken. |
+| `TLS_CERT_PATH`, `TLS_KEY_PATH` | empty | Leave empty to use plain HTTP locally. |
+
+The frontend needs no `.env` file. It finds the API on port 8443 of the host that served the page.
+
+### 5. Start the app
+
+```bash
 npm run dev
 ```
 
-The app opens at http://localhost:5173/chatappfriends/ and the API runs on http://localhost:8443.
+Open http://localhost:5173/chatappfriends/ and create an account with your invite code.
 
-Firefox ignores loopback addresses for WebRTC. To test voice in it, set `MEDIA_LISTEN_IP` to your LAN or
-Tailscale IP.
+The first start creates the tables, indexes and starter channels in whichever databases `server/.env` points at.
+Check those values first if they point at a server other people use.
 
-## Server setup (first deploy)
+## More documentation
 
-1. Install the requirements:
-
-   ```bash
-   sudo pacman -S --needed nodejs npm nginx git
-   ```
-
-2. Create the database and user (use your own password):
-
-   ```bash
-   sudo mariadb -e "CREATE DATABASE chatapp CHARACTER SET utf8mb4;
-     CREATE USER 'chatapp'@'localhost' IDENTIFIED BY 'choose-a-password';
-     CREATE USER 'chatapp'@'127.0.0.1' IDENTIFIED BY 'choose-a-password';
-     GRANT ALL ON chatapp.* TO 'chatapp'@'localhost';
-     GRANT ALL ON chatapp.* TO 'chatapp'@'127.0.0.1';"
-   ```
-
-   Tables, indexes and the starter channels are created automatically on first start.
-
-3. Make sure the `http { ... }` block of `/etc/nginx/nginx.conf` contains:
-
-   ```nginx
-   include /etc/nginx/conf.d/*.conf;
-   ```
-
-4. Clone the repo on the server, then point the deploy at your certificates:
-
-   ```bash
-   cp deploy/deploy.env.example deploy/deploy.env
-   nano deploy/deploy.env
-   ```
-
-5. Run the deploy. The first run creates `/etc/chatappfriends/server.env` with a generated secret and invite
-   code, then stops so you can add the database password:
-
-   ```bash
-   ./deploy.sh
-   sudo nano /etc/chatappfriends/server.env
-   ./deploy.sh
-   ```
-
-6. If a firewall is enabled, allow these ports on `tailscale0`: 443/tcp, 8443/tcp, 40000/udp and 40000/tcp.
-
-7. Share the invite code with your friends. They need it once, to register:
-
-   ```bash
-   sudo grep INVITE_CODE /etc/chatappfriends/server.env
-   ```
-
-## Hosting more sites on port 443
-
-`deploy/nginx-server.conf` is the single HTTPS server, and it loads every file in `/etc/nginx/apps/`. To add a
-site called `myapp`:
-
-1. Build it for its route (for Vite, `base: '/myapp/'`) and copy the output to `/srv/http/myapp/`.
-2. Copy `deploy/nginx-app.conf` to `/etc/nginx/apps/myapp.conf` and change the routes and security headers.
-3. Run `sudo nginx -t && sudo systemctl reload nginx`.
-
-All sites share one browser origin, so they share localStorage and can call each other's APIs. Only host sites
-you trust here, or give a site its own hostname and `server` block.
-
-## Updating
-
-```bash
-./deploy.sh            # pulls the current branch, rebuilds and restarts
-./deploy.sh --no-pull  # deploys the code already on disk
-```
-
-## Operations
-
-```bash
-systemctl status chatappfriends
-journalctl -u chatappfriends -f
-```
-
-- **Images** are stored in `/var/lib/chatappfriends/uploads`. Back this up along with both databases.
-- **Disk space:** uploads are refused once free space drops below the maximum image size (1 GB).
-- **Certificates:** Tailscale certificates last about 90 days. After renewing, run
-  `sudo systemctl restart chatappfriends && sudo systemctl reload nginx`, because the backend loads them only
-  at startup.
-- **Friends on Tailscale:** each friend needs to reach this machine on your tailnet, either as a member or
-  through node sharing. Voice connects to the server only, never directly between friends, so sharing this one
-  node is enough.
+- [DOCUMENTATION.md](DOCUMENTATION.md): project structure, pages, API and socket events
+- [CONTEXT.md](CONTEXT.md): how production is set up, and the project's rules
+- [NEW_PROJECT_GUIDE.md](NEW_PROJECT_GUIDE.md): how to set up another project on the same server

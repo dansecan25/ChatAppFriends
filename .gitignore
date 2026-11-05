@@ -7,3 +7,4 @@ server/uploads/
 deploy/deploy.env
 .DS_Store
 *.log
+CONTEXT.local.md
