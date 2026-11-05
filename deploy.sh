@@ -5,7 +5,8 @@ set -euo pipefail
 APP_DIR=/opt/chatappfriends
 WEB_DIR=/srv/http/chatappfriends
 ENV_FILE=/etc/chatappfriends/server.env
-NGINX_FILE=/etc/nginx/conf.d/chatappfriends.conf
+NGINX_SERVER_FILE=/etc/nginx/conf.d/https-server.conf
+NGINX_APP_FILE=/etc/nginx/apps/chatappfriends.conf
 UNIT_FILE=/etc/systemd/system/chatappfriends.service
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +79,8 @@ sudo rm -rf "$WEB_DIR"
 sudo mv "$WEB_DIR.new" "$WEB_DIR"
 
 step "Configuring nginx and systemd"
-render deploy/nginx.conf | sudo install -D -m 644 /dev/stdin "$NGINX_FILE"
+sudo test -f "$NGINX_SERVER_FILE" || render deploy/nginx-server.conf | sudo install -D -m 644 /dev/stdin "$NGINX_SERVER_FILE"
+render deploy/nginx-app.conf | sudo install -D -m 644 /dev/stdin "$NGINX_APP_FILE"
 render deploy/chatappfriends.service | sudo install -m 644 /dev/stdin "$UNIT_FILE"
 sudo nginx -t
 sudo systemctl daemon-reload
@@ -89,8 +91,8 @@ sudo systemctl reload-or-restart nginx.service
 step "Checking the deployment"
 for _ in {1..15}; do
   if curl -fsS "https://$TS_HOSTNAME:8443/api/health" >/dev/null 2>&1; then
-    curl -fsS -o /dev/null "https://$TS_HOSTNAME/" || fail "nginx is not serving the frontend"
-    echo "Deployed: https://$TS_HOSTNAME"
+    curl -fsS -o /dev/null "https://$TS_HOSTNAME/chatappfriends/" || fail "nginx is not serving the frontend"
+    echo "Deployed: https://$TS_HOSTNAME/chatappfriends/"
     exit 0
   fi
   sleep 2

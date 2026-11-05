@@ -2,7 +2,7 @@
 
 Self-hosted voice, text and image chat for up to 20 friends, reachable over Tailscale.
 
-- **Frontend:** Vue 3, TypeScript, Pinia, served by nginx on port 443
+- **Frontend:** Vue 3, TypeScript, Pinia, served by nginx on port 443 at `/chatappfriends/`
 - **Backend:** Node.js, TypeScript, Express, Socket.IO, served over HTTPS on port 8443
 - **Voice:** WebRTC through a mediasoup SFU, on port 40000 (UDP, with TCP as a fallback)
 - **Data:** MariaDB for users and channels, MongoDB for messages, the disk for images
@@ -46,7 +46,7 @@ cp server/.env.example server/.env   # then fill in the secrets and database cre
 npm run dev
 ```
 
-The app opens at http://localhost:5173 and the API runs on http://localhost:8443.
+The app opens at http://localhost:5173/chatappfriends/ and the API runs on http://localhost:8443.
 
 Firefox ignores loopback addresses for WebRTC. To test voice in it, set `MEDIA_LISTEN_IP` to your LAN or
 Tailscale IP.
@@ -100,6 +100,18 @@ Tailscale IP.
    ```bash
    sudo grep INVITE_CODE /etc/chatappfriends/server.env
    ```
+
+## Hosting more sites on port 443
+
+`deploy/nginx-server.conf` is the single HTTPS server, and it loads every file in `/etc/nginx/apps/`. To add a
+site called `myapp`:
+
+1. Build it for its route (for Vite, `base: '/myapp/'`) and copy the output to `/srv/http/myapp/`.
+2. Copy `deploy/nginx-app.conf` to `/etc/nginx/apps/myapp.conf` and change the routes and security headers.
+3. Run `sudo nginx -t && sudo systemctl reload nginx`.
+
+All sites share one browser origin, so they share localStorage and can call each other's APIs. Only host sites
+you trust here, or give a site its own hostname and `server` block.
 
 ## Updating
 

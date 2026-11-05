@@ -4,7 +4,7 @@ import ChatView from '@/views/ChatView.vue';
 import LoginView from '@/views/LoginView.vue';
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     { path: '/channels/:channelId(\\d+)?', name: 'chat', component: ChatView },
