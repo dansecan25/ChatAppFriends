@@ -13,6 +13,8 @@ import type { Channel } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
 import { useUserDisplay } from '@/composables/useUserDisplay';
 import AppIcon from './AppIcon.vue';
+import ChannelActions from './ChannelActions.vue';
+import ChannelNameForm from './ChannelNameForm.vue';
 import CreateChannelDialog from './CreateChannelDialog.vue';
 import ProfileDialog from './ProfileDialog.vue';
 import ServerSettingsDialog from './ServerSettingsDialog.vue';
@@ -38,10 +40,11 @@ const settingsOpen = ref(false);
 const pickingDm = ref(false);
 const dialogType = ref<ChannelType | null>(null);
 const actionError = ref<string | null>(null);
+const renamingId = ref<number | null>(null);
 
 const activeId = computed(() => Number(route.params.channelId));
 const activeDmId = computed(() => Number(route.params.dmId));
-const canDelete = (channel: Channel) => channel.createdBy === auth.user?.id || servers.active?.isAdmin === true;
+const canCreate = computed(() => servers.can('createChannels') || servers.can('manageChannels'));
 const dmCandidates = computed(() => servers.members.filter((member) => member.id !== auth.user?.id));
 
 /** Opens a conversation. */
@@ -72,6 +75,17 @@ function onCreated(channel: Channel): void {
   dialogType.value = null;
   if (channel.type === 'text') openChannel(channel);
   else void voice.join(channel.id);
+}
+
+/** Saves a channel's new name. */
+async function rename(channel: Channel, name: string): Promise<void> {
+  renamingId.value = null;
+  actionError.value = null;
+  try {
+    await channels.renameChannel(channel.id, name);
+  } catch (err) {
+    actionError.value = errorMessage(err, 'Could not rename the channel');
+  }
 }
 
 /** Deletes a channel after confirmation. */
@@ -113,53 +127,55 @@ async function logout(): Promise<void> {
       <section>
         <header class="section-title">
           <h2>Text channels</h2>
-          <button class="icon-btn small" aria-label="Create text channel" @click="dialogType = 'text'">
+          <button v-if="canCreate" class="icon-btn small" aria-label="Create text channel" @click="dialogType = 'text'">
             <AppIcon name="plus" :size="16" />
           </button>
         </header>
         <div v-for="channel in channels.textChannels" :key="channel.id" class="row" :class="{ active: channel.id === activeId }">
-          <button
-            class="channel"
-            :class="{ unread: channels.unread.has(`c${channel.id}`) }"
-            :aria-current="channel.id === activeId ? 'page' : undefined"
-            @click="openChannel(channel)"
-          >
-            <AppIcon :name="channel.restricted ? 'lock' : 'hash'" :size="17" />
-            <span class="name">{{ channel.name }}</span>
-            <span v-if="channels.unread.has(`c${channel.id}`)" class="dot" aria-label="Unread messages" />
-          </button>
-          <button
-            v-if="canDelete(channel)"
-            class="icon-btn small delete"
-            :aria-label="`Delete ${channel.name}`"
-            @click="removeChannel(channel)"
-          >
-            <AppIcon name="trash" :size="15" />
-          </button>
+          <ChannelNameForm v-if="renamingId === channel.id" :name="channel.name" @save="rename(channel, $event)" @cancel="renamingId = null" />
+          <template v-else>
+            <button
+              class="channel"
+              :class="{ unread: channels.unread.has(`c${channel.id}`) }"
+              :aria-current="channel.id === activeId ? 'page' : undefined"
+              @click="openChannel(channel)"
+            >
+              <AppIcon :name="channel.restricted ? 'lock' : 'hash'" :size="17" />
+              <span class="name">{{ channel.name }}</span>
+              <span v-if="channels.unread.has(`c${channel.id}`)" class="dot" aria-label="Unread messages" />
+            </button>
+            <ChannelActions
+              v-if="servers.canManageChannel(channel)"
+              :name="channel.name"
+              @rename="renamingId = channel.id"
+              @remove="removeChannel(channel)"
+            />
+          </template>
         </div>
       </section>
 
       <section>
         <header class="section-title">
           <h2>Voice channels</h2>
-          <button class="icon-btn small" aria-label="Create voice channel" @click="dialogType = 'voice'">
+          <button v-if="canCreate" class="icon-btn small" aria-label="Create voice channel" @click="dialogType = 'voice'">
             <AppIcon name="plus" :size="16" />
           </button>
         </header>
         <template v-for="channel in channels.voiceChannels" :key="channel.id">
           <div class="row" :class="{ active: channel.id === voice.channelId }">
-            <button class="channel" @click="voice.join(channel.id)">
-              <AppIcon name="speaker" :size="17" />
-              <span class="name">{{ channel.name }}</span>
-            </button>
-            <button
-              v-if="canDelete(channel)"
-              class="icon-btn small delete"
-              :aria-label="`Delete ${channel.name}`"
-              @click="removeChannel(channel)"
-            >
-              <AppIcon name="trash" :size="15" />
-            </button>
+            <ChannelNameForm v-if="renamingId === channel.id" :name="channel.name" @save="rename(channel, $event)" @cancel="renamingId = null" />
+            <template v-else>
+              <button class="channel" @click="voice.join(channel.id)">
+                <AppIcon name="speaker" :size="17" />
+                <span class="name">{{ channel.name }}</span>
+              </button>
+              <ChannelActions
+                v-if="servers.canManageChannel(channel)"
+                :name="channel.name"
+                @rename="renamingId = channel.id"
+                @remove="removeChannel(channel)"
+              />
+            </template>
           </div>
           <ul v-if="voice.rosters[channel.id]?.length" class="roster">
             <li v-for="person in voice.rosters[channel.id]" :key="person.userId">
@@ -359,20 +375,6 @@ h2 {
   background: var(--accent);
 }
 
-.delete {
-  opacity: 0;
-}
-
-.row:hover .delete,
-.delete:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .delete {
-    opacity: 1;
-  }
-}
 
 .roster {
   margin: 0.15rem 0 0.35rem;

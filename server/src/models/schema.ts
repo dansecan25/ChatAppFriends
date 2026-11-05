@@ -1,7 +1,12 @@
 import { pool } from '../connections/mariadb.js';
 import { getMongoDb } from '../connections/mongodb.js';
+import { DEFAULT_EVERYONE_PERMISSIONS } from '../utils/permissions.js';
 
 const TABLE_OPTIONS = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+
+/** Columns added after release, shared by a fresh install and the migration. */
+export const ROLE_PERMISSIONS_COLUMN = 'permissions INT UNSIGNED NOT NULL DEFAULT 0';
+export const EVERYONE_PERMISSIONS_COLUMN = `everyone_permissions INT UNSIGNED NOT NULL DEFAULT ${DEFAULT_EVERYONE_PERMISSIONS}`;
 
 /** Tables that are new since the first release, shared by a fresh install and the migration. */
 export async function createSecurityTables(): Promise<void> {
@@ -11,6 +16,7 @@ export async function createSecurityTables(): Promise<void> {
       slot INT UNSIGNED NOT NULL UNIQUE,
       name VARCHAR(50) NOT NULL,
       root_key_version INT UNSIGNED NOT NULL DEFAULT 0,
+      ${EVERYONE_PERMISSIONS_COLUMN},
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ${TABLE_OPTIONS}`);
   await pool.query(`
@@ -42,6 +48,7 @@ export async function createSecurityTables(): Promise<void> {
       server_id INT UNSIGNED NOT NULL,
       name VARCHAR(32) NOT NULL,
       is_admin TINYINT(1) NOT NULL DEFAULT 0,
+      ${ROLE_PERMISSIONS_COLUMN},
       UNIQUE KEY roles_name (server_id, name),
       FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE
     ) ${TABLE_OPTIONS}`);
@@ -104,7 +111,10 @@ export const hasColumn = async (table: string, column: string): Promise<boolean>
 
 /** Tells whether the database is missing part of the current schema. */
 export const needsMigration = async (): Promise<boolean> =>
-  (await hasColumn('users', 'username')) || !(await hasColumn('servers', 'slot')) || !(await hasColumn('users', 'avatar_id'));
+  (await hasColumn('users', 'username')) ||
+  !(await hasColumn('servers', 'slot')) ||
+  !(await hasColumn('users', 'avatar_id')) ||
+  !(await hasColumn('roles', 'permissions'));
 
 /** Creates all tables on an empty database, and refuses to start on an unmigrated one. */
 export async function ensureSchema(): Promise<void> {

@@ -1,11 +1,14 @@
 import { pool } from '../connections/mariadb.js';
 import { decryptField, encryptField } from '../utils/fieldCrypto.js';
+import { ADMINISTRATOR } from '../utils/permissions.js';
 
 export interface Server {
   id: number;
   slot: number;
   name: string;
   rootKeyVersion: number;
+  /** Permission bits every member has, before roles. */
+  everyonePermissions: number;
 }
 
 export interface StoredRootKey {
@@ -14,12 +17,17 @@ export interface StoredRootKey {
 }
 
 const ADMIN_ROLE_NAME = 'Admin';
-const SELECT_SERVER = 'SELECT s.id, s.slot, s.name, s.root_key_version AS rootKeyVersion FROM servers s';
+const SELECT_SERVER = `SELECT s.id, s.slot, s.name, s.root_key_version AS rootKeyVersion,
+  s.everyone_permissions AS everyonePermissions FROM servers s`;
 
 /** Creates a server with its built-in admin role, returning the server's id. */
 export async function insertServer(slot: number, name: string): Promise<number> {
   const result = await pool.query('INSERT INTO servers (slot, name) VALUES (?, ?)', [slot, name]);
-  await pool.query('INSERT INTO roles (server_id, name, is_admin) VALUES (?, ?, 1)', [result.insertId, ADMIN_ROLE_NAME]);
+  await pool.query('INSERT INTO roles (server_id, name, is_admin, permissions) VALUES (?, ?, 1, ?)', [
+    result.insertId,
+    ADMIN_ROLE_NAME,
+    ADMINISTRATOR,
+  ]);
   return result.insertId;
 }
 
@@ -52,6 +60,11 @@ export async function listAllServerIds(): Promise<number[]> {
 /** Renames a server. */
 export async function renameServer(id: number, name: string): Promise<void> {
   await pool.query('UPDATE servers SET name = ? WHERE id = ?', [name, id]);
+}
+
+/** Replaces what every member of a server can do. */
+export async function setEveryonePermissions(id: number, permissions: number): Promise<void> {
+  await pool.query('UPDATE servers SET everyone_permissions = ? WHERE id = ?', [permissions, id]);
 }
 
 /** Returns every stored version of a server's key. */

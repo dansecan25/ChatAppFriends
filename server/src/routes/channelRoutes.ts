@@ -7,6 +7,7 @@ import { requireAuth } from '../middlewares/auth.js';
 export const channelRoutes = Router();
 
 channelRoutes.use(requireAuth);
+channelRoutes.patch('/:channelId', channelController.rename);
 channelRoutes.delete('/:channelId', channelController.remove);
 channelRoutes.put('/:channelId/roles', channelController.setRoles);
 channelRoutes.get('/:channelId/keys', channelController.keys);

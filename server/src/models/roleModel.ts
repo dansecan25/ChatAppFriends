@@ -4,12 +4,15 @@ export interface Role {
   id: number;
   serverId: number;
   name: string;
+  /** The built-in Admin role, which can't be deleted or lose its permissions. */
   isAdmin: boolean;
+  /** Permission bits, see utils/permissions. */
+  permissions: number;
 }
 
 const toRole = (row: any): Role => ({ ...row, isAdmin: Boolean(row.isAdmin) });
 
-const SELECT_ROLE = 'SELECT id, server_id AS serverId, name, is_admin AS isAdmin FROM roles';
+const SELECT_ROLE = 'SELECT id, server_id AS serverId, name, is_admin AS isAdmin, permissions FROM roles';
 
 /** Lists a server's roles. */
 export async function listRoles(serverId: number): Promise<Role[]> {
@@ -23,9 +26,18 @@ export async function findRoleById(id: number): Promise<Role | null> {
 }
 
 /** Creates a role. */
-export async function insertRole(serverId: number, name: string): Promise<Role> {
-  const result = await pool.query('INSERT INTO roles (server_id, name) VALUES (?, ?)', [serverId, name]);
-  return { id: result.insertId, serverId, name, isAdmin: false };
+export async function insertRole(serverId: number, name: string, permissions: number): Promise<Role> {
+  const result = await pool.query('INSERT INTO roles (server_id, name, permissions) VALUES (?, ?, ?)', [
+    serverId,
+    name,
+    permissions,
+  ]);
+  return { id: result.insertId, serverId, name, isAdmin: false, permissions };
+}
+
+/** Renames a role and replaces its permissions. */
+export async function updateRole(id: number, name: string, permissions: number): Promise<void> {
+  await pool.query('UPDATE roles SET name = ?, permissions = ? WHERE id = ?', [name, permissions, id]);
 }
 
 /** Deletes a role. */
@@ -56,12 +68,12 @@ export async function setMemberRoles(serverId: number, userId: number, roleIds: 
   }
 }
 
-/** Tells whether a user holds a server's built-in admin role. */
-export async function hasAdminRole(serverId: number, userId: number): Promise<boolean> {
+/** Returns the permission bits of all of a member's roles in a server combined. */
+export async function memberRolePermissions(serverId: number, userId: number): Promise<number> {
   const rows = await pool.query(
-    `SELECT 1 FROM member_roles mr JOIN roles r ON r.id = mr.role_id
-     WHERE r.server_id = ? AND r.is_admin = 1 AND mr.user_id = ?`,
+    `SELECT BIT_OR(r.permissions) AS bits FROM member_roles mr JOIN roles r ON r.id = mr.role_id
+     WHERE r.server_id = ? AND mr.user_id = ?`,
     [serverId, userId],
   );
-  return rows.length > 0;
+  return Number(rows[0]?.bits ?? 0);
 }

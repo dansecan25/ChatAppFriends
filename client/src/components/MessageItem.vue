@@ -37,7 +37,7 @@ const parts = computed<(MessagePart | TextOrLink)[]>(() =>
 );
 const isMine = computed(() => props.message.author.id === auth.user?.id);
 const canEdit = computed(() => isMine.value && props.message.protection === 'encrypted');
-const canDelete = computed(() => isMine.value || (!inDm.value && servers.active?.isAdmin === true));
+const canDelete = computed(() => isMine.value || (!inDm.value && servers.can('manageMessages')));
 const editing = ref(false);
 const embeds = computed(() => (readable.value && !editing.value ? findEmbeds(props.message.content) : []));
 const actionError = ref<string | null>(null);

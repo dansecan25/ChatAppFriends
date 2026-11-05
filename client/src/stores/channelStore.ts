@@ -54,6 +54,18 @@ export const useChannelStore = defineStore('channels', () => {
     if (!channels.value.some((existing) => existing.id === channel.id)) channels.value.push(channel);
   }
 
+  /** Shows a channel's new details, such as a new name. */
+  function applyUpdate(channel: Channel): void {
+    const index = channels.value.findIndex((existing) => existing.id === channel.id);
+    if (index !== -1) channels.value[index] = channel;
+    if (directory.value.has(channel.id)) directory.value.set(channel.id, channel);
+  }
+
+  /** Renames a channel on the server. */
+  async function renameChannel(id: number, name: string): Promise<void> {
+    applyUpdate(await channelApi.renameChannel(id, name));
+  }
+
   /** Removes a channel from the list. */
   function removeChannel(id: number): void {
     channels.value = channels.value.filter((channel) => channel.id !== id);
@@ -115,6 +127,8 @@ export const useChannelStore = defineStore('channels', () => {
     findKnown,
     locate,
     remember,
+    applyUpdate,
+    renameChannel,
     addChannel,
     removeChannel,
     createChannel,

@@ -19,7 +19,8 @@ import { findOwnerId, findUserById, findUsersByIds } from '../models/userModel.j
 import { SERVER_DEFINITIONS } from '../serverDefinitions.js';
 import { decryptField, encryptField } from '../utils/fieldCrypto.js';
 import { HttpError } from '../utils/httpError.js';
-import { isServerAdmin } from './accessService.js';
+import { covers } from '../utils/permissions.js';
+import { permissionsOf, requirePermission } from './accessService.js';
 import { isOnline } from './presenceService.js';
 import { emitToServer, emitToUsers, unsubscribeUserFromServer } from './realtimeService.js';
 import { applyAccessChange } from './roleService.js';
@@ -59,14 +60,14 @@ export async function getServersForUser(userId: number) {
       id: server.id,
       name: server.name,
       rootKeyVersion: server.rootKeyVersion,
-      isAdmin: await isServerAdmin(server.id, userId),
       rootKeys: (await listRootKeys(server.id)).map(({ version, keyEnc }) => ({ version, key: decryptField(keyEnc) })),
     })),
   );
 }
 
 /** Renames a server for everyone in it. */
-export async function rename(serverId: number, name: string): Promise<void> {
+export async function rename(serverId: number, actorId: number, name: string): Promise<void> {
+  await requirePermission(serverId, actorId, 'manageServer');
   await renameServer(serverId, name);
   emitToServer(serverId, 'server:renamed', { id: serverId, name });
 }
@@ -103,8 +104,12 @@ export async function getMembers(serverId: number) {
  * Their code keeps working for them until it's revoked and replaced in INVITE_CODE.
  */
 export async function removeMember(serverId: number, targetId: number, actorId: number): Promise<void> {
+  const actor = await requirePermission(serverId, actorId, 'removeMembers');
   if (targetId === actorId) throw new HttpError(400, 'You cannot remove yourself');
   if ((await findUserById(targetId))?.isOwner) throw new HttpError(403, 'The owner cannot be removed');
+  if (!covers(actor, await permissionsOf(serverId, targetId))) {
+    throw new HttpError(403, "You can't remove someone with permissions you don't have");
+  }
 
   unsubscribeUserFromServer(targetId, serverId);
   const server = await findServerById(serverId);

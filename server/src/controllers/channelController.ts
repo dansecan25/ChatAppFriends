@@ -1,21 +1,21 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { currentUser } from '../middlewares/auth.js';
-import { findChannelById } from '../models/channelModel.js';
-import { isServerAdmin, requireMember } from '../services/accessService.js';
+import { requireMember, requirePermission } from '../services/accessService.js';
 import * as channelService from '../services/channelService.js';
 import * as roleService from '../services/roleService.js';
-import { HttpError } from '../utils/httpError.js';
 import { envelopesSchema, idSchema } from './schemas.js';
 
 const roleIdsSchema = z.array(z.number().int().positive()).max(50);
 
+const nameSchema = z.string().trim().min(1, 'Enter a channel name').max(50, 'Channel names can have up to 50 characters');
 const createSchema = z.object({
-  name: z.string().trim().min(1, 'Enter a channel name').max(50, 'Channel names can have up to 50 characters'),
+  name: nameSchema,
   type: z.enum(['text', 'voice']),
   roleIds: roleIdsSchema.default([]),
   envelopes: envelopesSchema.default([]),
 });
+const renameSchema = z.object({ name: nameSchema });
 const rolesSchema = z.object({ roleIds: roleIdsSchema.min(1, 'Choose at least one role') });
 const shareSchema = z.object({ envelopes: envelopesSchema });
 const rotateSchema = z.object({ version: z.number().int().positive(), envelopes: envelopesSchema });
@@ -34,9 +34,14 @@ export async function list(req: Request, res: Response): Promise<void> {
 export async function create(req: Request, res: Response): Promise<void> {
   const serverId = idSchema.parse(req.params.serverId);
   const userId = currentUser(req).id;
-  await requireMember(serverId, userId);
+  await requirePermission(serverId, userId, 'createChannels', 'manageChannels');
   const { name, type, roleIds, envelopes } = createSchema.parse(req.body);
   res.status(201).json(await channelService.createChannel(serverId, name, type, userId, roleIds, envelopes));
+}
+
+/** PATCH /channels/:channelId */
+export async function rename(req: Request, res: Response): Promise<void> {
+  res.json(await channelService.renameChannel(channelIdOf(req), currentUser(req).id, renameSchema.parse(req.body).name));
 }
 
 /** DELETE /channels/:channelId */
@@ -47,13 +52,7 @@ export async function remove(req: Request, res: Response): Promise<void> {
 
 /** PUT /channels/:channelId/roles */
 export async function setRoles(req: Request, res: Response): Promise<void> {
-  const userId = currentUser(req).id;
-  const channel = await findChannelById(channelIdOf(req));
-  if (!channel) throw new HttpError(404, 'Channel not found');
-  await requireMember(channel.serverId, userId);
-  if (channel.createdBy !== userId && !(await isServerAdmin(channel.serverId, userId))) {
-    throw new HttpError(403, 'Only the channel creator or an admin can change its roles');
-  }
+  const channel = await channelService.requireChannelManager(channelIdOf(req), currentUser(req).id);
   res.json(await roleService.updateChannelRoles(channel, rolesSchema.parse(req.body).roleIds));
 }
 

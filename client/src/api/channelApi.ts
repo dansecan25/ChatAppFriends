@@ -13,6 +13,10 @@ export const createChannel = async (
   body: { name: string; type: ChannelType; roleIds: number[]; envelopes: KeyEnvelopeDto[] },
 ): Promise<Channel> => toChannel(await request<ChannelDto>(`/servers/${serverId}/channels`, { method: 'POST', body }));
 
+/** Renames a channel. */
+export const renameChannel = async (id: number, name: string): Promise<Channel> =>
+  toChannel(await request<ChannelDto>(`/channels/${id}`, { method: 'PATCH', body: { name } }));
+
 /** Deletes a channel. */
 export const deleteChannel = (id: number): Promise<void> => request(`/channels/${id}`, { method: 'DELETE' });
 

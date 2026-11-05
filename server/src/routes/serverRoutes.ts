@@ -13,7 +13,9 @@ serverRoutes.delete('/:serverId/members/:userId', serverController.removeMember)
 serverRoutes.put('/:serverId/members/:userId/roles', serverController.setMemberRoles);
 serverRoutes.get('/:serverId/roles', serverController.roles);
 serverRoutes.post('/:serverId/roles', serverController.createRole);
+serverRoutes.patch('/:serverId/roles/:roleId', serverController.updateRole);
 serverRoutes.delete('/:serverId/roles/:roleId', serverController.deleteRole);
+serverRoutes.put('/:serverId/everyone', serverController.setEveryone);
 serverRoutes.get('/:serverId/channels', channelController.list);
 serverRoutes.post('/:serverId/channels', channelController.create);
 serverRoutes.get('/:serverId/key-work', channelController.keyWork);

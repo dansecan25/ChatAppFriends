@@ -10,8 +10,11 @@ runs on your own server.
 - **End-to-end encryption:** messages and images in channels and DMs are encrypted in the browser, so the database and
   disk only hold ciphertext. See [what this does and doesn't protect](DOCUMENTATION.md#what-encryption-protects).
 - **Direct messages:** private conversations that only the two people in them can read, not even the owner.
-- **Roles:** admins create roles, and a channel can be limited to chosen roles. Its encryption key only goes to those
-  people.
+- **Roles and permissions:** like Discord, each role grants permissions such as managing channels, roles, members or
+  messages, and an **Everyone** set applies to all members. Nobody can hand out a permission they don't have. Every server
+  has a built-in Admin role with all of them.
+- **Restricted channels:** a channel can be limited to chosen roles. Its encryption key only goes to those people.
+- **Renaming channels:** a channel's creator, or anyone who can manage channels, can rename it from the sidebar.
 - **Editing and deleting messages:** people can edit and delete their own messages, and admins can delete anyone's in a
   channel. DMs stay private, so only the sender can delete there.
 - **Installable:** phones and computers can add it to the home screen or app list and open it like an app.
@@ -25,7 +28,7 @@ runs on your own server.
 - **Voice chat:** mute, deafen and speaking indicators, with audio routed through the server.
 - **Images up to 1 GB:** upload progress and cancel. PNG, JPEG, GIF, WebP, AVIF and BMP are accepted, and images over
   25 MB load only when asked.
-- **Removing members:** admins can remove someone from a server. Its encryption key is replaced, so that person can't
+- **Removing members:** those with the permission can remove someone with fewer permissions from a server. Its encryption key is replaced, so that person can't
   read anything new.
 - **Owner tools:** the owner belongs to every server, switches between them from a tab bar, and can revoke invite codes.
 - **Account recovery:** a recovery key saved at signup restores access after a forgotten password.

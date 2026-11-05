@@ -159,6 +159,19 @@ and everyone signs up again, so only do it once.
 
 Normal updates to `main` only need the deploy scripts. Don't run `reset-prod-db.sh` for them.
 
+### Updates that change the database
+
+Some updates add columns, such as role permissions. After deploying one, the backend refuses to start until the
+migration has run. It only adds what's missing, so it's safe to run again, and the old backend keeps working with the
+new columns until it's restarted. As root on the server:
+
+1. `git pull`, then back up MariaDB:
+   `install -d -m 700 /root/chatapp-backups && mariadb-dump --single-transaction --databases chatapp > /root/chatapp-backups/$(date +%Y%m%d-%H%M%S)-mariadb.sql`
+2. `./deploy-server.sh`, then `npm run migrate -w server`. It should print `Migration complete.`
+3. `./deploy-client.sh`, then `systemctl restart chatappdiscord.service` and `systemctl reload nginx.service`.
+
+To undo it, restore that backup with `mariadb < <backup file>` and deploy the previous version.
+
 To reset the test databases used by `npm run dev`, stop it and run `./reset-test-db.sh` on your laptop, without `sudo`.
 Then clear the site's data in your browsers. It refuses to run unless `server/.env` points at `chatapp-test-env`.
 

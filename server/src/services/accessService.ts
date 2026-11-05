@@ -1,10 +1,11 @@
 import { findChannelById, listChannels, type Channel } from '../models/channelModel.js';
 import { findDmById, type DmConversation } from '../models/dmModel.js';
 import type { MessageScope } from '../models/messageModel.js';
-import { hasAdminRole, listMemberRoleIds } from '../models/roleModel.js';
-import { isMember, listMemberIds } from '../models/serverModel.js';
+import { listMemberRoleIds, memberRolePermissions } from '../models/roleModel.js';
+import { findServerById, isMember, listMemberIds } from '../models/serverModel.js';
 import { findUserById } from '../models/userModel.js';
 import { HttpError } from '../utils/httpError.js';
+import { ALL_PERMISSIONS, expandAdministrator, permissionBit, type Permission } from '../utils/permissions.js';
 
 /** Requires the signed-in user to be the app's owner. */
 export async function requireOwner(userId: number): Promise<void> {
@@ -16,15 +17,33 @@ export async function requireMember(serverId: number, userId: number): Promise<v
   if (!(await isMember(serverId, userId))) throw new HttpError(404, 'Server not found');
 }
 
-/** Tells whether a user can manage a server's roles. */
-export async function isServerAdmin(serverId: number, userId: number): Promise<boolean> {
-  return (await findUserById(userId))?.isOwner === true || hasAdminRole(serverId, userId);
+/**
+ * Returns what someone may do in a server, as permission bits: what everyone can do plus their roles'.
+ * The owner may do everything. Callers check membership first.
+ */
+export async function permissionsOf(serverId: number, userId: number): Promise<number> {
+  const [user, server, roleBits] = await Promise.all([
+    findUserById(userId),
+    findServerById(serverId),
+    memberRolePermissions(serverId, userId),
+  ]);
+  if (user?.isOwner) return ALL_PERMISSIONS;
+  return expandAdministrator((server?.everyonePermissions ?? 0) | roleBits);
 }
 
-/** Requires a member who can manage the server's roles. */
-export async function requireServerAdmin(serverId: number, userId: number): Promise<void> {
+/** Tells whether a member has a permission. */
+export async function hasPermission(serverId: number, userId: number, permission: Permission): Promise<boolean> {
+  return ((await permissionsOf(serverId, userId)) & permissionBit(permission)) !== 0;
+}
+
+/** Requires a member with any of the given permissions, and returns all of theirs. */
+export async function requirePermission(serverId: number, userId: number, ...permissions: Permission[]): Promise<number> {
   await requireMember(serverId, userId);
-  if (!(await isServerAdmin(serverId, userId))) throw new HttpError(403, 'Only an admin can do this');
+  const bits = await permissionsOf(serverId, userId);
+  if (!permissions.some((permission) => (bits & permissionBit(permission)) !== 0)) {
+    throw new HttpError(403, "You don't have permission to do this");
+  }
+  return bits;
 }
 
 /** Works out who may use a channel, given each member's roles. */

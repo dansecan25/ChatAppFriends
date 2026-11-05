@@ -8,6 +8,8 @@ import { useServerStore } from '@/stores/serverStore';
 import type { MemberDto } from '@/types/dto';
 import type { Channel } from '@/types/models';
 import { errorMessage } from '@/utils/errors';
+import { covers, type Permission } from '@/utils/permissions';
+import RoleEditor from './RoleEditor.vue';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -24,9 +26,12 @@ const notice = ref<string | null>(null);
 const error = ref<string | null>(null);
 
 const serverId = computed(() => servers.activeId as number);
-const isAdmin = computed(() => servers.active?.isAdmin === true);
 const isOwner = computed(() => auth.user?.isOwner === true);
-const restrictedChannels = computed(() => channels.channels.filter((channel) => channel.restricted));
+const mine = computed(() => servers.myPermissions);
+const managesRoles = computed(() => servers.can('manageRoles'));
+const restrictedChannels = computed(() =>
+  channels.channels.filter((channel) => channel.restricted && servers.canManageChannel(channel)),
+);
 
 /** Runs an action and shows any failure. */
 async function attempt(action: () => Promise<unknown>): Promise<void> {
@@ -54,6 +59,21 @@ const removeRole = (roleId: number) =>
     await servers.fetchMembership();
   });
 
+const saveRole = (roleId: number, change: { name?: string; permissions: Permission[] }) =>
+  attempt(async () => {
+    await serverApi.updateRole(serverId.value, roleId, change);
+    await servers.fetchMembership();
+  });
+
+const saveEveryone = ({ permissions }: { permissions: Permission[] }) =>
+  attempt(async () => {
+    await serverApi.setEveryonePermissions(serverId.value, permissions);
+    await servers.fetchMembership();
+  });
+
+/** Roles can only be given or taken away by someone holding all of their permissions. */
+const canAssign = (role: { permissions: Permission[] }) => managesRoles.value && covers(mine.value, role.permissions);
+
 /** Adds or removes one role on a list of role ids. */
 const toggled = (roleIds: number[], roleId: number) =>
   roleIds.includes(roleId) ? roleIds.filter((id) => id !== roleId) : [...roleIds, roleId];
@@ -70,8 +90,12 @@ const toggleChannelRole = (channel: Channel, roleId: number) =>
     await channels.fetchChannels(serverId.value);
   });
 
-/** Tells whether the signed-in user may remove a member from the list. */
-const canRemove = (member: MemberDto) => isAdmin.value && !member.isOwner && member.id !== auth.user?.id;
+/** Members can only be removed by someone holding all of their permissions. */
+const canRemove = (member: MemberDto) =>
+  servers.can('removeMembers') &&
+  !member.isOwner &&
+  member.id !== auth.user?.id &&
+  covers(mine.value, [...servers.permissionsOf(member.id)]);
 
 const removeMember = (member: MemberDto) =>
   attempt(async () => {
@@ -114,17 +138,28 @@ onMounted(async () => {
     <div class="modal-body">
       <h2>Server settings</h2>
 
-      <form class="inline-form" aria-label="Rename server" @submit.prevent="rename">
+      <form v-if="servers.can('manageServer')" class="inline-form" aria-label="Rename server" @submit.prevent="rename">
         <input v-model="name" required maxlength="50" aria-label="Server name" />
         <button class="btn">Rename</button>
       </form>
 
-      <section v-if="isAdmin" class="modal-body">
+      <p v-else class="hint">{{ servers.active?.name }}</p>
+
+      <section v-if="managesRoles" class="modal-body">
         <h3>Roles</h3>
         <ul class="plain-list">
-          <li v-for="role in servers.roles" :key="role.id" class="row">
-            <span>{{ role.name }}</span>
-            <button v-if="!role.isAdmin" class="btn small" @click="removeRole(role.id)">Delete</button>
+          <li>
+            <RoleEditor :name="null" :permissions="servers.everyone" :mine="mine" @save="saveEveryone" />
+          </li>
+          <li v-for="role in servers.roles" :key="role.id">
+            <RoleEditor
+              :name="role.name"
+              :permissions="role.permissions"
+              :built-in="role.isAdmin"
+              :mine="mine"
+              @save="saveRole(role.id, $event)"
+              @remove="removeRole(role.id)"
+            />
           </li>
         </ul>
         <form class="inline-form" @submit.prevent="addRole">
@@ -144,11 +179,12 @@ onMounted(async () => {
               </span>
               <button v-if="canRemove(member)" class="btn small" @click="removeMember(member)">Remove</button>
             </div>
-            <div v-if="isAdmin" class="choices">
+            <div v-if="managesRoles" class="choices">
               <label v-for="role in servers.roles" :key="role.id">
                 <input
                   type="checkbox"
                   :checked="member.roleIds.includes(role.id)"
+                  :disabled="!canAssign(role)"
                   @change="toggleMemberRole(member, role.id)"
                 />{{ role.name }}
               </label>
@@ -160,7 +196,7 @@ onMounted(async () => {
         </ul>
       </section>
 
-      <section v-if="isAdmin && restrictedChannels.length" class="modal-body">
+      <section v-if="restrictedChannels.length" class="modal-body">
         <h3>Restricted channels you can see</h3>
         <ul class="plain-list">
           <li v-for="channel in restrictedChannels" :key="channel.id">

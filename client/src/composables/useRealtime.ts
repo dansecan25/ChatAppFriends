@@ -78,6 +78,7 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     if (dto.serverId === servers.activeId) channels.addChannel(toChannel(dto));
     else channels.remember(toChannel(dto));
   };
+  const onChannelUpdated = (dto: ChannelDto) => channels.applyUpdate(toChannel(dto));
   const onChannelDeleted = ({ id }: { id: number }) => {
     channels.removeChannel(id);
     messages.removeThread(`c${id}`);
@@ -107,6 +108,7 @@ export function useRealtime(activeThread: Ref<Thread | null>): { connected: Ref<
     ['message:updated', onMessageUpdated],
     ['message:deleted', onMessageDeleted],
     ['channel:created', onChannelCreated],
+    ['channel:updated', onChannelUpdated],
     ['channel:deleted', onChannelDeleted],
     ['server:renamed', onRenamed],
     ['access:changed', onAccessChanged],

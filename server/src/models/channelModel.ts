@@ -70,6 +70,11 @@ export async function insertChannel(
   };
 }
 
+/** Renames a channel. */
+export async function renameChannelById(id: number, name: string): Promise<void> {
+  await pool.query('UPDATE channels SET name = ? WHERE id = ?', [name, id]);
+}
+
 /** Replaces the roles allowed in a channel. */
 export async function setChannelRoles(channelId: number, roleIds: number[]): Promise<void> {
   await pool.query('DELETE FROM channel_roles WHERE channel_id = ?', [channelId]);

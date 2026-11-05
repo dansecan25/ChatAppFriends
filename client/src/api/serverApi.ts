@@ -1,4 +1,5 @@
-import type { MemberDto, RoleDto, ServerDto } from '@/types/dto';
+import type { MemberDto, RoleDto, RolesDto, ServerDto } from '@/types/dto';
+import type { Permission } from '@/utils/permissions';
 import { request } from './http';
 
 /** Lists the user's servers. */
@@ -15,12 +16,20 @@ export const fetchMembers = (id: number): Promise<MemberDto[]> => request(`/serv
 export const removeMember = (id: number, userId: number): Promise<void> =>
   request(`/servers/${id}/members/${userId}`, { method: 'DELETE' });
 
-/** Lists a server's roles. */
-export const fetchRoles = (id: number): Promise<RoleDto[]> => request(`/servers/${id}/roles`);
+/** Lists a server's roles and what every member can do. */
+export const fetchRoles = (id: number): Promise<RolesDto> => request(`/servers/${id}/roles`);
 
 /** Creates a role. */
 export const createRole = (id: number, name: string): Promise<RoleDto> =>
   request(`/servers/${id}/roles`, { method: 'POST', body: { name } });
+
+/** Renames a role or replaces its permissions. */
+export const updateRole = (id: number, roleId: number, change: { name?: string; permissions: Permission[] }): Promise<void> =>
+  request(`/servers/${id}/roles/${roleId}`, { method: 'PATCH', body: change });
+
+/** Replaces what every member can do. */
+export const setEveryonePermissions = (id: number, permissions: Permission[]): Promise<void> =>
+  request(`/servers/${id}/everyone`, { method: 'PUT', body: { permissions } });
 
 /** Deletes a role. */
 export const deleteRole = (id: number, roleId: number): Promise<void> =>

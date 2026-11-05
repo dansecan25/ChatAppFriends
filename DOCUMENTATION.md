@@ -133,7 +133,7 @@ the first text channel. It connects the socket while open.
 | `ChatView` | Loads the server, conversations and messages. Shows the safety number in a DM. | `GET /api/dms`, `GET /api/servers/:id/channels`, `/members` and `/roles`, `GET .../messages` |
 | `useRealtime` | Connects the socket and updates the stores from server events | All server events except `voice:newProducer` and `voice:consumerClosed` |
 | `ServerSwitcher` | The tab bar for switching servers, shown to the owner and anyone in two or more | None |
-| `ServerSettingsDialog` | Renames the server and joins another with a code. Admins manage roles, members and restricted channels, and the owner revokes codes. | `PATCH /api/servers/:id`, `POST /api/invites/redeem`, role and member role endpoints, `DELETE /api/servers/:id/members/:userId`, `PUT /api/channels/:id/roles`, `POST /api/invites/revoke` |
+| `ServerSettingsDialog` | Renames the server and joins another with a code, and shows whatever the user's permissions allow: role permissions (`RoleEditor`), members and restricted channels. The owner revokes codes. | `PATCH /api/servers/:id`, `POST /api/invites/redeem`, role, `everyone` and member role endpoints, `DELETE /api/servers/:id/members/:userId`, `PUT /api/channels/:id/roles`, `POST /api/invites/revoke` |
 | `ChannelSidebar` | Lists channels and DMs, opens them, joins voice, deletes channels, signs out | `POST /api/dms`, `DELETE /api/channels/:id`, `POST /api/auth/logout`, `voice:leave` |
 | `CreateChannelDialog` | Creates a channel, optionally limited to roles | `POST /api/servers/:id/channels` |
 | `VoiceControls` | Shows the voice connection, with mute, deafen and leave | `voice:setState`, `voice:leave` |
@@ -169,25 +169,28 @@ The base URL is `<host>:8443/api`. Errors are JSON in the form `{ "error": "mess
 | `POST /invites/redeem` | Signed in | `{ code }` | `204`, joins that code's server |
 | `POST /invites/revoke` | Owner | `{ code }` | `204`, adds it to the blacklist |
 | `GET /servers` | Signed in | | `200` the user's servers, with their keys for open channels |
-| `PATCH /servers/:serverId` | Member | `{ name }` | `204` |
+| `PATCH /servers/:serverId` | `manageServer` | `{ name }` | `204` |
 | `GET /servers/:serverId/members` | Member | | `200` members with public keys, role ids and online status |
-| `DELETE /servers/:serverId/members/:userId` | Admin. Not yourself or the owner. | | `204`, replaces the server key |
-| `PUT /servers/:serverId/members/:userId/roles` | Admin | `{ roleIds }` | `204` |
-| `GET /servers/:serverId/roles` | Member | | `200` roles |
-| `POST /servers/:serverId/roles` | Admin | `{ name }` | `201` role |
-| `DELETE /servers/:serverId/roles/:roleId` | Admin | | `204` |
+| `DELETE /servers/:serverId/members/:userId` | `removeMembers`, holding all the target's permissions. Not yourself or the owner. | | `204`, replaces the server key |
+| `PUT /servers/:serverId/members/:userId/roles` | `manageRoles`, holding all the permissions of each role given or taken away | `{ roleIds }` | `204` |
+| `GET /servers/:serverId/roles` | Member | | `200 { everyone, roles }`, each with its permission names |
+| `POST /servers/:serverId/roles` | `manageRoles`, holding every permission given | `{ name, permissions? }` | `201` role |
+| `PATCH /servers/:serverId/roles/:roleId` | `manageRoles`, holding all of the role's old and new permissions | `{ name?, permissions? }` | `204`, or `400` if the Admin role would lose `administrator` |
+| `DELETE /servers/:serverId/roles/:roleId` | `manageRoles`, holding all of the role's permissions. Not the Admin role. | | `204` |
+| `PUT /servers/:serverId/everyone` | `manageRoles`, holding all of the old and new permissions | `{ permissions }` | `204` |
 | `GET /servers/:serverId/channels` | Member | | `200` channels this user may see |
-| `POST /servers/:serverId/channels` | Member | `{ name, type, roleIds?, envelopes? }` | `201` channel |
+| `POST /servers/:serverId/channels` | `createChannels` or `manageChannels` | `{ name, type, roleIds?, envelopes? }` | `201` channel |
 | `GET /servers/:serverId/key-work` | Member | | `200 { grants, rotations }` |
-| `DELETE /channels/:channelId` | Creator or admin | | `204` |
-| `PUT /channels/:channelId/roles` | Creator or admin | `{ roleIds }` | `200` channel |
+| `PATCH /channels/:channelId` | Its creator, or `manageChannels` | `{ name }` | `200` channel, or `409` if the name is taken |
+| `DELETE /channels/:channelId` | Its creator, or `manageChannels` | | `204` |
+| `PUT /channels/:channelId/roles` | Its creator, or `manageChannels` | `{ roleIds }` | `200` channel |
 | `GET /channels/:channelId/keys` | Allowed members | | `200 { keyVersion, envelopes }` |
 | `POST /channels/:channelId/keys` | Allowed members | `{ envelopes }` | `204` |
 | `POST /channels/:channelId/rotate` | Allowed members | `{ version, envelopes }` | `204`, or `409` if already replaced |
 | `GET /channels/:channelId/messages`, `GET /dms/:dmId/messages` | Allowed members | Query: `limit` (1-100, default 50), `before` (message id) | `200` messages, oldest first |
 | `POST /channels/:channelId/messages`, `POST /dms/:dmId/messages` | Allowed members | `{ ciphertext, keyVersion, uploadId? }` | `201` message, or `409` if the channel's key changed |
 | `PATCH /channels/:channelId/messages/:messageId`, `PATCH /dms/:dmId/messages/:messageId` | The author | `{ ciphertext, keyVersion }` | `200` message, or `409` if the channel's key changed |
-| `DELETE /channels/:channelId/messages/:messageId`, `DELETE /dms/:dmId/messages/:messageId` | The author, or a server admin who can see that channel. DMs have no admin exception. | | `204` |
+| `DELETE /channels/:channelId/messages/:messageId`, `DELETE /dms/:dmId/messages/:messageId` | The author, or someone with `manageMessages` who can see that channel. DMs have no such exception. | | `204` |
 | `POST /channels/:channelId/uploads`, `POST /dms/:dmId/uploads` | Allowed members | | `201 { uploadId }` |
 | `PUT /uploads/:uploadId/chunks/:index` | The uploader | Raw encrypted bytes, up to 4 MB plus 16 bytes | `204` |
 | `DELETE /uploads/:uploadId` | The uploader | | `204` |
@@ -233,7 +236,8 @@ Each of these takes an acknowledgement, which replies `{ ok: true, data }` or `{
 | `channel:created` | Channel | Those allowed in it |
 | `channel:deleted` | `{ id, serverId }` | Those allowed in it |
 | `server:renamed` | `{ id, name }` | That server |
-| `roles:changed` | `{ serverId }` | That server |
+| `roles:changed` | `{ serverId }` | That server, when roles, their permissions or what everyone can do change |
+| `channel:updated` | Channel, after a rename | Those allowed in it |
 | `access:changed` | `{ serverId }` | People whose channel access or keys changed |
 | `keys:needed` | `{ serverId }` | That server, so a browser with the keys can share them |
 | `dm:created` | `{ id }` | The other person |
@@ -343,11 +347,11 @@ owner belongs to every server and can read those anyway.
 | Table | Contents |
 |---|---|
 | `users` | `username_hash`, `username_enc`, `password_hash` (of the login key), `kdf_salt`, `public_key`, wrapped private keys, `recovery_verifier_hash`, `is_owner`, `avatar_id` |
-| `servers` | `slot` (its position in `INVITE_CODE`), `name`, `root_key_version` |
+| `servers` | `slot` (its position in `INVITE_CODE`), `name`, `root_key_version`, `everyone_permissions` |
 | `server_members` | Membership, and `nickname_enc` (encrypted with `DATA_ENCRYPTION_KEY`) |
 | `server_keys` | Each version of the server key, encrypted with `DATA_ENCRYPTION_KEY` |
 | `revoked_codes` | The blacklist: a hash of each revoked code |
-| `roles`, `member_roles`, `channel_roles` | Roles, who holds them and which channels they open. `is_admin` marks the built-in admin role. |
+| `roles`, `member_roles`, `channel_roles` | Roles, who holds them and which channels they open. `permissions` holds each role's permission bits, and `is_admin` marks the built-in Admin role. |
 | `channels` | `server_id`, `name`, `type`, `restricted`, `key_version`, `rotation_pending`, `created_by` |
 | `channel_keys` | Each member's wrapped copy of each version of a restricted channel's key |
 | `dm_conversations` | The two people and each one's wrapped key |
@@ -360,6 +364,32 @@ after an hour idle, or at startup.
 
 Deleting a channel also deletes its messages and files. Servers are created at startup from
 `server/src/serverDefinitions.ts`, each with `general` text and `General` voice channels.
+
+## Permissions
+
+Each server has an **Everyone** set of permissions, and each role adds more. Someone's permissions are Everyone's plus
+those of all their roles. The owner has all of them in every server.
+
+| Permission | Allows |
+|---|---|
+| `administrator` | Every permission below |
+| `manageServer` | Renaming the server |
+| `manageChannels` | Creating, renaming and deleting any channel, and choosing a restricted channel's roles |
+| `createChannels` | Creating channels. Creators can always rename, delete and limit their own channels. |
+| `manageRoles` | Creating, editing, deleting and assigning roles |
+| `removeMembers` | Removing members from the server |
+| `manageMessages` | Deleting anyone's messages in channels, never in DMs |
+
+New servers, and servers migrated from before permissions, give Everyone `manageServer` and `createChannels`, which is
+what every member could do before.
+
+Like Discord's role order, nobody can give, take away or edit a permission they don't hold. That covers creating and
+editing roles, changing Everyone, and assigning roles. Removing someone needs all of their permissions too. The built-in
+Admin role always keeps `administrator` and can't be deleted.
+
+Permissions never open a restricted channel. Its key only goes to its roles' members, so not even an administrator can
+read it without one of those roles. `server/src/utils/permissions.ts` stores permissions as bits in list order, so new
+ones must be added to the end of that list and of `client/src/utils/permissions.ts`.
 
 ## Security
 

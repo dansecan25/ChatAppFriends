@@ -2,7 +2,9 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import * as serverApi from '@/api/serverApi';
 import { loadRootKeys } from '@/services/crypto/keyring';
+import { useAuthStore } from '@/stores/authStore';
 import type { MemberDto, RoleDto, ServerDto } from '@/types/dto';
+import { PERMISSIONS, type Permission } from '@/utils/permissions';
 
 const ACTIVE_SERVER_KEY = 'chatapp-active-server';
 
@@ -20,6 +22,8 @@ export const useServerStore = defineStore('servers', () => {
   const activeId = ref<number | null>(null);
   const members = ref<MemberDto[]>([]);
   const roles = ref<RoleDto[]>([]);
+  const everyone = ref<Permission[]>([]);
+  const auth = useAuthStore();
 
   const active = computed(() => servers.value.find((server) => server.id === activeId.value) ?? null);
 
@@ -35,10 +39,11 @@ export const useServerStore = defineStore('servers', () => {
   /** Loads the active server's members and roles. */
   async function fetchMembership(): Promise<void> {
     if (activeId.value === null) return;
-    [members.value, roles.value] = await Promise.all([
+    const [list, { everyone: base, roles: all }] = await Promise.all([
       serverApi.fetchMembers(activeId.value),
       serverApi.fetchRoles(activeId.value),
     ]);
+    [members.value, roles.value, everyone.value] = [list, all, base];
   }
 
   /** Switches server. */
@@ -60,6 +65,29 @@ export const useServerStore = defineStore('servers', () => {
   /** Finds someone in the server on screen. */
   const memberFor = (userId: number): MemberDto | undefined => members.value.find((member) => member.id === userId);
 
+  /**
+   * Works out what someone may do in the server on screen, the way the server does. It only decides what to show:
+   * the server checks every action itself.
+   */
+  function permissionsOf(userId: number): Set<Permission> {
+    const member = memberFor(userId);
+    if (!member) return new Set();
+    const granted = [
+      ...everyone.value,
+      ...roles.value.filter((role) => member.roleIds.includes(role.id)).flatMap((role) => role.permissions),
+    ];
+    return new Set(member.isOwner || granted.includes('administrator') ? PERMISSIONS : granted);
+  }
+
+  const myPermissions = computed(() => permissionsOf(auth.user?.id ?? 0));
+
+  /** Tells whether the signed-in user has a permission here. */
+  const can = (permission: Permission): boolean => myPermissions.value.has(permission);
+
+  /** People can rename, delete and limit their own channels, and those who manage channels can do it to any. */
+  const canManageChannel = (channel: { createdBy: number | null }): boolean =>
+    channel.createdBy === auth.user?.id || can('manageChannels');
+
   /** Updates someone's online status in the server on screen. */
   function applyPresence(serverId: number, userId: number, online: boolean): void {
     if (serverId !== activeId.value) return;
@@ -72,9 +100,29 @@ export const useServerStore = defineStore('servers', () => {
     servers.value = [];
     members.value = [];
     roles.value = [];
+    everyone.value = [];
     activeId.value = null;
     loaded.value = false;
   }
 
-  return { servers, loaded, activeId, active, members, roles, fetchServers, fetchMembership, select, memberFor, applyRename, applyPresence, reset };
+  return {
+    servers,
+    loaded,
+    activeId,
+    active,
+    members,
+    roles,
+    everyone,
+    myPermissions,
+    fetchServers,
+    fetchMembership,
+    select,
+    memberFor,
+    permissionsOf,
+    can,
+    canManageChannel,
+    applyRename,
+    applyPresence,
+    reset,
+  };
 });

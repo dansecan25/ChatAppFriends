@@ -1,3 +1,5 @@
+import type { Permission } from '@/utils/permissions';
+
 export type ChannelType = 'text' | 'voice';
 
 export interface UserDto {
@@ -25,7 +27,6 @@ export interface ServerDto {
   id: number;
   name: string;
   rootKeyVersion: number;
-  isAdmin: boolean;
   rootKeys: RootKeyDto[];
 }
 
@@ -42,7 +43,15 @@ export interface RoleDto {
   id: number;
   serverId: number;
   name: string;
+  /** The built-in Admin role. */
   isAdmin: boolean;
+  permissions: Permission[];
+}
+
+export interface RolesDto {
+  /** What every member can do before roles. */
+  everyone: Permission[];
+  roles: RoleDto[];
 }
 
 export interface ChannelDto {

@@ -15,7 +15,7 @@ import { findServerById } from '../models/serverModel.js';
 import { shareServer } from '../models/dmModel.js';
 import { findUsersByIds, type AuthUser } from '../models/userModel.js';
 import { HttpError } from '../utils/httpError.js';
-import { channelAudience, isServerAdmin, requireDmAccess, requireScopeAccess } from './accessService.js';
+import { channelAudience, hasPermission, requireDmAccess, requireScopeAccess } from './accessService.js';
 import { deleteStoredFile, finishUpload } from './fileService.js';
 import { emitToUsers } from './realtimeService.js';
 
@@ -139,11 +139,11 @@ export async function editMessage(
   return dto;
 }
 
-/** Admins can remove messages in their server's channels. DMs stay between the two people. */
+/** Those who can manage messages can remove them in channels. DMs stay between the two people. */
 async function canModerate(scope: MessageScope, userId: number): Promise<boolean> {
   if ('dmId' in scope) return false;
   const channel = await findChannelById(scope.channelId);
-  return !!channel && isServerAdmin(channel.serverId, userId);
+  return !!channel && hasPermission(channel.serverId, userId, 'manageMessages');
 }
 
 /** Lists who can see a message, so they all see it go. */
@@ -156,7 +156,7 @@ async function audienceOf(scope: MessageScope, userId: number): Promise<number[]
   return channel ? channelAudience(channel) : [];
 }
 
-/** Deletes a message and its files, for its author or an admin who can see it. */
+/** Deletes a message and its files, for its author or someone who can manage messages and can see it. */
 export async function deleteMessage(scope: MessageScope, userId: number, messageId: string): Promise<void> {
   const message = await requireMessage(scope, userId, messageId);
   if (message.authorId !== userId && !(await canModerate(scope, userId))) {

@@ -7,6 +7,7 @@ import {
   listChannels,
   listKeyEnvelopes,
   listKeyHolders,
+  renameChannelById,
   type Channel,
   type ChannelType,
   type KeyEnvelope,
@@ -14,7 +15,7 @@ import {
 import { deleteChannelMessages, findChannelFileIds } from '../models/messageModel.js';
 import { findRoleById } from '../models/roleModel.js';
 import { HttpError } from '../utils/httpError.js';
-import { channelAudience, isServerAdmin, requireChannelAccess } from './accessService.js';
+import { channelAudience, hasPermission, requireChannelAccess, requireMember } from './accessService.js';
 import { deleteStoredFile } from './fileService.js';
 import { emitToServer, emitToUsers } from './realtimeService.js';
 import { removeVoiceChannelPeers } from './voiceService.js';
@@ -23,6 +24,11 @@ const normalizeName = (name: string, type: ChannelType) => {
   const trimmed = name.trim().replace(/\s+/g, ' ');
   return type === 'text' ? trimmed.toLowerCase().replaceAll(' ', '-') : trimmed;
 };
+
+function rethrowDuplicate(err: unknown): never {
+  if ((err as { code?: string }).code === 'ER_DUP_ENTRY') throw new HttpError(409, 'A channel with that name already exists');
+  throw err;
+}
 
 /** Lists the channels a user may see in a server. */
 export async function getVisibleChannels(serverId: number, userId: number): Promise<Channel[]> {
@@ -50,15 +56,7 @@ export async function createChannel(
     throw new HttpError(400, 'A restricted channel needs a key for its creator');
   }
 
-  let channel: Channel;
-  try {
-    channel = await insertChannel(serverId, normalizeName(name, type), type, userId, roleIds);
-  } catch (err) {
-    if ((err as { code?: string }).code === 'ER_DUP_ENTRY') {
-      throw new HttpError(409, 'A channel with that name already exists');
-    }
-    throw err;
-  }
+  const channel = await insertChannel(serverId, normalizeName(name, type), type, userId, roleIds).catch(rethrowDuplicate);
   const audience = await channelAudience(channel);
   if (encryptedRestricted) {
     await insertKeyEnvelopes(
@@ -70,12 +68,29 @@ export async function createChannel(
   return channel;
 }
 
-/** Deletes a channel and its content. Its creator or a server admin may do this. */
-export async function deleteChannel(id: number, userId: number): Promise<void> {
-  const channel = await findChannelById(id);
+/** Returns a channel the user may rename, delete or limit: their own, or any if they can manage channels. */
+export async function requireChannelManager(channelId: number, userId: number): Promise<Channel> {
+  const channel = await findChannelById(channelId);
   if (!channel) throw new HttpError(404, 'Channel not found');
-  const allowed = channel.createdBy === userId || (await isServerAdmin(channel.serverId, userId));
-  if (!allowed) throw new HttpError(403, 'Only the channel creator or an admin can delete it');
+  await requireMember(channel.serverId, userId);
+  if (channel.createdBy !== userId && !(await hasPermission(channel.serverId, userId, 'manageChannels'))) {
+    throw new HttpError(403, "Only the channel's creator or someone who can manage channels can do this");
+  }
+  return channel;
+}
+
+/** Renames a channel for everyone who can see it. */
+export async function renameChannel(id: number, userId: number, name: string): Promise<Channel> {
+  const channel = await requireChannelManager(id, userId);
+  const renamed = { ...channel, name: normalizeName(name, channel.type) };
+  await renameChannelById(id, renamed.name).catch(rethrowDuplicate);
+  emitToUsers(await channelAudience(channel), 'channel:updated', renamed);
+  return renamed;
+}
+
+/** Deletes a channel and its content. */
+export async function deleteChannel(id: number, userId: number): Promise<void> {
+  const channel = await requireChannelManager(id, userId);
 
   const audience = await channelAudience(channel);
   await deleteChannelById(id);
