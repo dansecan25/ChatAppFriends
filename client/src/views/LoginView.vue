@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import PasswordInput from '@/components/PasswordInput.vue';
 import { useAuthStore } from '@/stores/authStore';
+import { offerToSaveLogin } from '@/utils/credentials';
 import { errorMessage } from '@/utils/errors';
 
 const auth = useAuthStore();
@@ -30,6 +31,7 @@ async function submit(): Promise<void> {
   try {
     if (isRegister.value) await auth.register(username.value, password.value, inviteCode.value);
     else await auth.login(username.value, password.value);
+    await offerToSaveLogin(username.value, password.value);
     await router.push({ name: 'chat' });
   } catch (err) {
     error.value = errorMessage(err);
@@ -45,7 +47,7 @@ async function submit(): Promise<void> {
       <h1>{{ isRegister ? 'Join your friends' : 'Welcome back' }}</h1>
       <label class="field">
         Username
-        <input v-model="username" autocomplete="username" required maxlength="32" autofocus />
+        <input v-model="username" name="username" autocomplete="username" required maxlength="32" autofocus />
       </label>
       <label class="field">
         Password
