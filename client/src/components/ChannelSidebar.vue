@@ -317,6 +317,11 @@ h2 {
   color: var(--text);
 }
 
+.row:hover :deep(.manage),
+.row:focus-within :deep(.manage) {
+  opacity: 1;
+}
+
 .row.active {
   background: var(--bg-hover);
   color: var(--text);

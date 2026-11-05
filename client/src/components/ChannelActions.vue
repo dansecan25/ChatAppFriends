@@ -20,14 +20,9 @@ defineEmits<{ rename: []; remove: [] }>();
   height: 26px;
 }
 
-/* Shown on hover, and always on touch screens, which have no hover. */
+/* ChannelSidebar shows these when their row is hovered. Touch screens have no hover, so there they always show. */
 .manage {
   opacity: 0;
-}
-
-:global(.row:hover) .manage,
-:global(.row:focus-within) .manage {
-  opacity: 1;
 }
 
 @media (hover: none) {
